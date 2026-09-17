@@ -1,7 +1,10 @@
 import asyncio
 import functools
+import os
+import sys
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.shared.exceptions import MCPError
 from mcp.types import (
     Tool,
     TextContent,
@@ -14,6 +17,7 @@ from mcp.types import (
 from kali_mcp.tools import network, web, password, recon, misc, metasploit, evasion, forensics, post_exploit
 
 server = Server("kali-mcp")
+AUTH_TOKEN: str = ""
 
 ALL_TOOLS: list[Tool] = [
     # ===================== NETWORK (8) =====================
@@ -1218,8 +1222,42 @@ def register_handlers() -> None:
     server.add_request_handler("tools/call", CallToolRequestParams, handle_call_tool)
 
 
+def register_auth_middleware() -> None:
+    async def auth_middleware(ctx, call_next):
+        if not AUTH_TOKEN:
+            return await call_next(ctx)
+
+        if ctx.method == "initialize":
+            return await call_next(ctx)
+
+        if ctx.method in ("tools/list", "tools/call"):
+            raw_params = ctx.params or {}
+            meta = raw_params.get("_meta", {}) if isinstance(raw_params, dict) else {}
+            token = meta.get("auth_token", "")
+
+            if token != AUTH_TOKEN:
+                raise MCPError(
+                    code=-32001,
+                    message="Unauthorized: invalid or missing auth_token in _meta",
+                )
+
+        return await call_next(ctx)
+
+    server.middleware.append(auth_middleware)
+
+
 def main():
+    global AUTH_TOKEN
+    AUTH_TOKEN = os.environ.get("KALI_MCP_AUTH_TOKEN", "")
+
+    for arg in sys.argv[1:]:
+        if arg.startswith("--auth-token="):
+            AUTH_TOKEN = arg.split("=", 1)[1]
+        elif arg == "--auth-token" and sys.argv.index(arg) + 1 < len(sys.argv):
+            AUTH_TOKEN = sys.argv[sys.argv.index(arg) + 1]
+
     register_handlers()
+    register_auth_middleware()
 
     async def _run():
         async with stdio_server() as (read_stream, write_stream):

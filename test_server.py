@@ -5,9 +5,9 @@ from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
 
-async def test_server():
+async def test_no_auth():
     server_params = StdioServerParameters(
-        command=sys.executable,  # use same venv python
+        command=sys.executable,
         args=["-m", "kali_mcp.server"],
     )
 
@@ -18,18 +18,6 @@ async def test_server():
 
             print(f"=== Server connected: {len(tools.tools)} tools listed ===\n")
 
-            # Count by category
-            categories = {}
-            for t in tools.tools:
-                cat = t.name.split("_")[0] if "_" in t.name else "other"
-                categories.setdefault(cat, []).append(t.name)
-
-            for cat, names in sorted(categories.items()):
-                print(f"  {cat}: {', '.join(names)}")
-
-            print()
-
-            # Test a few tool calls
             tests = [
                 ("searchsploit", {"query": "eternalblue"}),
                 ("whatweb", {"target": "example.com"}),
@@ -64,9 +52,53 @@ async def test_server():
                     print(f"  EXCEPTION: {e}")
                     failed += 1
 
-            print(f"\n=== Results: {passed} passed, {failed} failed, {skipped} skipped ===")
+            print(f"\n=== No-auth results: {passed} passed, {failed} failed, {skipped} skipped ===\n")
             return failed == 0
 
 
+async def test_auth():
+    print("=== Auth tests ===")
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "kali_mcp.server", "--auth-token", "test123"],
+    )
+
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # Without token — should be rejected
+            try:
+                await session.list_tools()
+                print("  FAIL: no-token request was not rejected")
+                return False
+            except Exception as e:
+                err = str(e)
+                if "-32001" in err or "Unauthorized" in err:
+                    print("  OK: no-token request rejected")
+                else:
+                    print(f"  UNEXPECTED: {err[:200]}")
+                    return False
+
+            # With token — should be accepted
+            result = await session._dispatcher.send_raw_request(
+                "tools/list",
+                {"_meta": {"auth_token": "test123"}},
+                {},
+            )
+            tools = result.get("tools", [])
+            print(f"  OK: with-token request returned {len(tools)} tools")
+            return True
+
+
+async def main():
+    no_auth_ok = await test_no_auth()
+    auth_ok = await test_auth()
+    if no_auth_ok and auth_ok:
+        print("\n=== All tests passed ===")
+    else:
+        print(f"\n=== Test failures: no_auth={not no_auth_ok}, auth={not auth_ok} ===")
+
+
 if __name__ == "__main__":
-    asyncio.run(test_server())
+    asyncio.run(main())

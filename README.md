@@ -33,6 +33,34 @@ Configure in your MCP client (e.g. Claude Desktop, OpenCode):
 }
 ```
 
+### Authentication (optional)
+
+Enable token-based auth by setting the `KALI_MCP_AUTH_TOKEN` environment variable or passing `--auth-token=...`:
+
+```bash
+KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server
+kali-mcp --auth-token=secret123
+```
+
+The client must include the token in the `_meta.auth_token` field on every request. Unauthorized requests are rejected with error code `-32001`.
+
+Client example with auth:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "nmap",
+    "arguments": { "target": "127.0.0.1" },
+    "_meta": { "auth_token": "secret123" }
+  }
+}
+```
+
+When no auth token is configured, all requests are accepted freely.
+
 ## Tools
 
 58 tools across 10 categories. See [TOOLS.md](TOOLS.md) for the full list.
@@ -59,7 +87,7 @@ Configure in your MCP client (e.g. Claude Desktop, OpenCode):
 
 ```
 src/kali_mcp/
-├── server.py          # MCP server entrypoint, tool registry, dispatch
+├── server.py          # MCP server entrypoint, tool registry, dispatch, auth middleware
 └── tools/
     ├── base.py        # Safe subprocess executor with timeout + blocked commands
     ├── network.py     # Network scanning, packet capture, DNS/SNMP enumeration
@@ -78,6 +106,7 @@ src/kali_mcp/
 - Commands run with configurable timeouts (30s–600s depending on tool)
 - Dangerous system commands (`rm`, `dd`, `shutdown`, etc.) are blocked
 - Target validation ensures required parameters are not empty
+- Optional token-based authentication rejects unauthorized requests
 
 ## License
 
