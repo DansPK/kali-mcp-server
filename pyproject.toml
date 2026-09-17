@@ -1,0 +1,18 @@
+[project]
+name = "kali-mcp"
+version = "0.1.0"
+description = "MCP server exposing popular Kali Linux tools for AI applications"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+kali-mcp = "kali_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
