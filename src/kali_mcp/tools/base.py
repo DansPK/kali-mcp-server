@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shlex
 
 DEFAULT_TIMEOUT = 120  # seconds
 BLOCKED_COMMANDS = {
@@ -31,6 +32,18 @@ def run_tool(command: list[str], timeout: int = DEFAULT_TIMEOUT, input_data: str
         return f"[error] tool '{command[0]}' not found — is it installed?"
     except Exception as e:
         return f"[error] {e}"
+
+
+def run_bash(command: str, timeout: int = DEFAULT_TIMEOUT) -> str:
+    if not command or not command.strip():
+        return "[error] command is required"
+    try:
+        args = shlex.split(command)
+    except ValueError as e:
+        return f"[error] invalid command: {e}"
+    if not args:
+        return "[error] empty command"
+    return run_tool(args, timeout=timeout)
 
 
 def require_target(target: str | None) -> str | None:

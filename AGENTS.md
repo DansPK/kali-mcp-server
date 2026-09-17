@@ -29,6 +29,7 @@ src/kali_mcp/
 ## Conventions
 - All tool functions accept kwargs matching MCP inputSchema properties and return `str`.
 - `run_tool()` in `base.py` is the single subprocess gateway — never call subprocess directly.
+- `run_bash()` in `base.py` wraps `run_tool()` with `shlex.split()` for arbitrary command execution. Use only as fallback when no dedicated tool exists.
 - `require_target()` in `base.py` validates target args aren't empty.
 - Tool names use `snake_case` for function names but the MCP `Tool.name` is the snake_case key in TOOL_DISPATCH.
 - Add new tools by: (1) creating the function in the appropriate tools/ module, (2) adding a `Tool(...)` definition and a `TOOL_DISPATCH` entry in server.py.

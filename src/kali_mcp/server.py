@@ -15,6 +15,7 @@ from mcp.types import (
 )
 
 from kali_mcp.tools import network, web, password, recon, misc, metasploit, evasion, forensics, post_exploit
+from kali_mcp.tools.base import run_bash
 
 server = Server("kali-mcp")
 AUTH_TOKEN: str = ""
@@ -1126,6 +1127,26 @@ ALL_TOOLS: list[Tool] = [
             "required": ["interface", "bssid"],
         },
     ),
+
+    # ===================== META (1) =====================
+    Tool(
+        name="run_command",
+        description=(
+            "Execute an arbitrary command on the Kali system. Use ONLY as a fallback when the specific tool "
+            "you need is not available as a dedicated MCP tool. The command is parsed into arguments "
+            "and runs with safety restrictions — dangerous commands (rm, dd, shutdown, etc.) are blocked. "
+            "Prefer the dedicated tool functions whenever possible for better parameter validation and structured output. "
+            "Output: command stdout and stderr output."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to execute (e.g. 'whois example.com', 'dig example.com ANY')"},
+                "timeout": {"type": "integer", "description": "Timeout in seconds (default: 120, max: 600)"},
+            },
+            "required": ["command"],
+        },
+    ),
 ]
 
 TOOL_DISPATCH = {
@@ -1196,6 +1217,8 @@ TOOL_DISPATCH = {
     "crackmapexec": lambda **kw: post_exploit.crackmapexec(**kw),
     "evil_winrm": lambda **kw: post_exploit.evil_winrm(**kw),
     "chisel": lambda **kw: post_exploit.chisel(**kw),
+    # Meta
+    "run_command": lambda **kw: run_bash(**kw),
 }
 
 

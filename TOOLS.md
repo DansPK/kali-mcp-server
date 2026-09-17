@@ -109,4 +109,12 @@
 
 ---
 
-**Total: 58 tools**
+## Meta (1)
+
+| Tool | Description |
+|---|---|
+| `run_command` | Execute arbitrary commands as a fallback when no dedicated tool is available |
+
+---
+
+**Total: 59 tools**
