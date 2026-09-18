@@ -1,0 +1,16 @@
+services:
+  kali-mcp:
+    build: .
+    image: kali-mcp:latest
+    container_name: kali-mcp
+    stdin_open: true
+    tty: false
+    environment:
+      - KALI_MCP_AUTH_TOKEN=${KALI_MCP_AUTH_TOKEN:-}
+    networks:
+      - host
+
+networks:
+  host:
+    name: host
+    external: true

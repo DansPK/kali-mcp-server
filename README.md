@@ -1,8 +1,10 @@
 # Kali MCP
 
-An MCP server exposing 58 popular Kali Linux security tools to AI applications via the [Model Context Protocol](https://modelcontextprotocol.io).
+An MCP server exposing 59 popular Kali Linux security tools to AI applications via the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ## Installation
+
+### Local
 
 ```bash
 python3 -m venv .venv
@@ -10,7 +12,19 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+### Docker
+
+```bash
+# Build the image
+docker build -t kali-mcp:latest .
+
+# Or via the helper script
+./docker-run.sh build
+```
+
 ## Usage
+
+### Local
 
 ```bash
 # Direct
@@ -28,6 +42,44 @@ Configure in your MCP client (e.g. Claude Desktop, OpenCode):
     "kali": {
       "command": "python",
       "args": ["-m", "kali_mcp.server"]
+    }
+  }
+}
+```
+
+### Docker
+
+```bash
+# Run via helper script
+./docker-run.sh run
+
+# Or via docker-compose
+KALI_MCP_AUTH_TOKEN=secret123 docker compose run --rm kali-mcp
+```
+
+Configure in your MCP client to use the Docker container:
+
+```json
+{
+  "mcpServers": {
+    "kali": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--privileged", "kali-mcp:latest"]
+    }
+  }
+}
+```
+
+Some tools (nmap, masscan, tcpdump) require elevated privileges. Use `--privileged` for full functionality, or add specific capabilities like `--cap-add=NET_ADMIN --cap-add=NET_RAW`.
+
+With auth token:
+
+```json
+{
+  "mcpServers": {
+    "kali": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--privileged", "-e", "KALI_MCP_AUTH_TOKEN=secret123", "kali-mcp:latest"]
     }
   }
 }
@@ -76,6 +128,7 @@ When no auth token is configured, all requests are accepted freely.
 | Forensics | binwalk, volatility, foremost, steghide |
 | Post-Exploit | crackmapexec, evil_winrm, chisel |
 | Misc | aircrack_ng, responder, impacket, mimikatz, bettercap, hash_identifier, cewl, proxychains, wifite, reaver |
+| Meta | run_command |
 
 ## Requirements
 
@@ -107,6 +160,14 @@ src/kali_mcp/
 - Dangerous system commands (`rm`, `dd`, `shutdown`, etc.) are blocked
 - Target validation ensures required parameters are not empty
 - Optional token-based authentication rejects unauthorized requests
+- The `run_command` fallback uses the same safety restrictions as all other tools
+
+## Disclaimer
+
+This tool is intended for authorized security testing and educational purposes only.
+Users are responsible for complying with all applicable laws and regulations.
+Unauthorized use of security tools against systems you do not own or have explicit
+permission to test is illegal.
 
 ## License
 

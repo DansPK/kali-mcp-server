@@ -6,6 +6,8 @@ Kali MCP — an MCP server exposing popular Kali Linux security tools to AI appl
 ## Commands
 - Install: `pip install -e .`
 - Run: `python -m kali_mcp.server` or `kali-mcp`
+- Docker: `docker build -t kali-mcp:latest .` then `docker run --rm -i kali-mcp:latest`
+- Compose: `docker compose run --rm kali-mcp`
 - Run with auth: `KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server`
 - Auth: set `KALI_MCP_AUTH_TOKEN` env var or `--auth-token=...` flag. Client passes token via `_meta.auth_token` on each request. Unauthorized requests return error code -32001.
 

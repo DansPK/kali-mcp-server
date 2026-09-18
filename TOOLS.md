@@ -1,6 +1,6 @@
 # Kali MCP Tools
 
-58 security tools exposed via MCP for AI-assisted pentesting.
+59 security tools exposed via MCP for AI-assisted pentesting.
 
 ---
 
