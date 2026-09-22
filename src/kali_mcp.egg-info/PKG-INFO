@@ -3,4 +3,6 @@ Name: kali-mcp
 Version: 0.1.0
 Summary: MCP server exposing popular Kali Linux tools for AI applications
 Requires-Python: >=3.10
+License-File: LICENSE
 Requires-Dist: mcp>=1.0.0
+Dynamic: license-file

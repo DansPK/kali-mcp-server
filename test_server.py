@@ -38,7 +38,7 @@ async def test_no_auth():
                 try:
                     result = await session.call_tool(name, args)
                     text = result.content[0].text if result.content else ""
-                    if result.is_error:
+                    if result.isError:
                         print(f"  ERROR: {text[:200]}")
                         failed += 1
                     elif "[error]" in text.lower() and "not found" in text.lower():
@@ -81,12 +81,12 @@ async def test_auth():
                     return False
 
             # With token — should be accepted
-            result = await session._dispatcher.send_raw_request(
-                "tools/list",
-                {"_meta": {"auth_token": "test123"}},
-                {},
+            from mcp.types import ListToolsRequest
+            req = ListToolsRequest.model_validate(
+                {"method": "tools/list", "params": {"_meta": {"auth_token": "test123"}}}
             )
-            tools = result.get("tools", [])
+            result = await session.send_request(req, ListToolsRequest)
+            tools = result.tools
             print(f"  OK: with-token request returned {len(tools)} tools")
             return True
 

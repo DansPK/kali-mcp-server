@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# kali-client — Linux launcher for the Kali MCP client.
+#
+# Usage:
+#   ./kali-client --list
+#   ./kali-client --call nmap --kwargs '{"target": "127.0.0.1"}'
+#   ./kali-client -t sse -u http://10.0.0.5:8080/sse --auth-token secret123 -i
+#
+# Environment:
+#   KALI_MCP_AUTH_TOKEN   Auth token (or pass --auth-token)
+#   KALI_MCP_TRANSPORT    stdio | sse | streamable-http
+#   KALI_MCP_SERVER_DIR   Where the kali_mcp package lives (for stdio)
+#   KALI_MCP_PYTHON       Python interpreter to use (default: python3)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="${KALI_MCP_PYTHON:-python3}"
+CLIENT="$SCRIPT_DIR/kali_mcp_client.py"
+
+if [[ ! -f "$CLIENT" ]]; then
+    echo "[error] client not found: $CLIENT" >&2
+    exit 1
+fi
+
+if ! "$PYTHON" -c "import mcp" >/dev/null 2>&1; then
+    echo "[error] the 'mcp' package is required: pip install mcp" >&2
+    exit 1
+fi
+
+# For stdio transport, make sure the server package is importable.
+if [[ "${KALI_MCP_TRANSPORT:-stdio}" == "stdio" || " $* " == *" stdio "* ]]; then
+    if ! "$PYTHON" -c "import kali_mcp" >/dev/null 2>&1; then
+        if [[ -n "${KALI_MCP_SERVER_DIR:-}" ]]; then
+            export PYTHONPATH="${KALI_MCP_SERVER_DIR}/src${PYTHONPATH:+:$PYTHONPATH}"
+        elif [[ -d "$SCRIPT_DIR/../src" ]]; then
+            export PYTHONPATH="$SCRIPT_DIR/../src${PYTHONPATH:+:$PYTHONPATH}"
+        fi
+    fi
+fi
+
+exec "$PYTHON" "$CLIENT" "$@"

@@ -1,3 +1,5 @@
+LICENSE
+README.md
 pyproject.toml
 src/kali_mcp/__init__.py
 src/kali_mcp/server.py
@@ -10,9 +12,11 @@ src/kali_mcp.egg-info/top_level.txt
 src/kali_mcp/tools/__init__.py
 src/kali_mcp/tools/base.py
 src/kali_mcp/tools/evasion.py
+src/kali_mcp/tools/forensics.py
 src/kali_mcp/tools/metasploit.py
 src/kali_mcp/tools/misc.py
 src/kali_mcp/tools/network.py
 src/kali_mcp/tools/password.py
+src/kali_mcp/tools/post_exploit.py
 src/kali_mcp/tools/recon.py
 src/kali_mcp/tools/web.py
