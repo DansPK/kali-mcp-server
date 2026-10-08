@@ -243,3 +243,56 @@ def require_target(target: str | None) -> str | None:
     if not target or not target.strip():
         return "target is required"
     return None
+
+
+def start_background(
+    command: list[str],
+    env: dict | None = None,
+    cwd: str | None = None,
+    log_file: str = "",
+) -> subprocess.Popen:
+    """Launch a long-running daemon and return its Popen handle.
+
+    This is the sanctioned gateway (alongside run_tool/run_bash) for
+    processes that must outlive a single call — e.g. the OWASP ZAP daemon.
+    All direct subprocess usage stays in this module. The child is detached
+    into its own session so it survives the caller, with output redirected
+    to ``log_file`` (or discarded).
+    """
+    executable = os.path.basename(command[0])
+    if executable in BLOCKED_COMMANDS:
+        raise ValueError(f"command '{executable}' is blocked for safety")
+
+    sink = open(log_file, "ab") if log_file else subprocess.DEVNULL
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            env=env,
+            cwd=cwd,
+            start_new_session=True,
+        )
+    except Exception as e:
+        raise RuntimeError(f"failed to start background process: {e}") from e
+    finally:
+        if log_file:
+            sink.close()  # child keeps its own duplicate of the fd
+    return proc
+
+
+def stop_background(proc: subprocess.Popen | None, timeout: int = 10) -> bool:
+    """Terminate a process started with start_background(). Returns success."""
+    if proc is None or proc.poll() is not None:
+        return True
+    try:
+        proc.terminate()
+        proc.wait(timeout=timeout)
+    except Exception:
+        try:
+            proc.kill()
+            proc.wait(timeout=timeout)
+        except Exception:
+            return False
+    return True

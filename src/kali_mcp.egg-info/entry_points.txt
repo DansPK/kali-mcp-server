@@ -1,2 +1,0 @@
-[console_scripts]
-kali-mcp = kali_mcp.server:main

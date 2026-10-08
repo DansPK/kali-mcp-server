@@ -1,11 +1,13 @@
+.git/
+.gitignore
 .venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 dist/
 build/
-*.egg
 .eggs/
 .pytest_cache/
 .mypy_cache/
@@ -16,9 +18,4 @@ build/
 .DS_Store
 Thumbs.db
 .opencode.json
-
-# nuclei runtime artifacts
-.nuclei-cache/
-.nuclei-config/
-nuclei/
-
+docker-compose.yml

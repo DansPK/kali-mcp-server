@@ -1,6 +1,6 @@
 # Kali MCP Tools
 
-59 security tools exposed via MCP for AI-assisted pentesting.
+67 security tools exposed via MCP for AI-assisted pentesting.
 
 ---
 
@@ -32,6 +32,19 @@
 | `wfuzz` | Web application brute-forcer |
 | `xsser` | XSS scanner and exploitation framework |
 | `commix` | Automated command injection exploitation |
+
+## OWASP ZAP — Web App Scanning (8)
+
+| Tool | Description |
+|---|---|
+| `zap_start` | Start/verify the headless ZAP daemon (auto-started by other zap_* tools) |
+| `zap_stop` | Shut down the ZAP daemon |
+| `zap_status` | Check whether the ZAP daemon is running and its version |
+| `zap_spider` | Crawl a web app to enumerate URLs, forms, and endpoints |
+| `zap_active_scan` | Intrusive active scan (SQLi, XSS, etc.) — authorized targets only |
+| `zap_scan` | Full scan in one call: spider + passive wait + active scan + alerts |
+| `zap_alerts` | List findings, filterable by base URL and risk level |
+| `zap_report` | Generate an HTML/MD/SARIF report of the findings |
 
 ## Password (4)
 
@@ -117,4 +130,4 @@
 
 ---
 
-**Total: 59 tools**
+**Total: 67 tools**

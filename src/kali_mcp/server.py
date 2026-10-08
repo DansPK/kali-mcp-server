@@ -1,11 +1,13 @@
 import argparse
 import asyncio
+import contextvars
 import functools
+import hmac
 import os
 import sys
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.shared.exceptions import MCPError as McpError
+from mcp.shared.exceptions import McpError
 from mcp.types import (
     Tool,
     TextContent,
@@ -20,6 +22,9 @@ from kali_mcp.tools import ALL_TOOLS, TOOL_DISPATCH
 
 server = Server("kali-mcp")
 AUTH_TOKEN: str = ""
+_AUTH_HEADER_OK: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "kali_mcp_auth_header_ok", default=False
+)
 
 
 async def handle_list_tools(ctx, _req: ListToolsRequest) -> ListToolsResult:
@@ -71,6 +76,10 @@ def register_auth_middleware() -> None:
     def _check(req) -> None:
         if not AUTH_TOKEN:
             return
+        # HTTP-header auth (validated by HeaderAuthMiddleware) bypasses the
+        # _meta.auth_token check for clients that only support custom headers.
+        if _AUTH_HEADER_OK.get():
+            return
         # Requests are pydantic models with a .params (or root.params) attribute;
         # _meta.auth_token arrives inside params.
         params = getattr(req, "params", None)
@@ -102,6 +111,42 @@ def register_auth_middleware() -> None:
 
     handlers[_LTR] = authed_list
     handlers[_CTR] = authed_call
+
+
+class HeaderAuthMiddleware:
+    """ASGI middleware enabling HTTP header auth (e.g. ``Authorization: Bearer``).
+
+    Clients that can only set request headers (OpenCode, IDEs, browsers) are
+    validated here; the result is propagated to the JSON-RPC handler through a
+    context variable so requests without ``_meta.auth_token`` still pass.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or not AUTH_TOKEN:
+            await self.app(scope, receive, send)
+            return
+
+        token = ""
+        for name, value in scope.get("headers") or []:
+            lname = name.lower()
+            val = value.decode("latin-1")
+            if lname == b"authorization" and val.lower().startswith("bearer "):
+                token = val[7:].strip()
+            elif lname in (b"x-auth-token", b"x-kali-mcp-auth-token"):
+                token = val.strip()
+
+        if token and hmac.compare_digest(token, AUTH_TOKEN):
+            ctx_token = _AUTH_HEADER_OK.set(True)
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                _AUTH_HEADER_OK.reset(ctx_token)
+            return
+
+        await self.app(scope, receive, send)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -185,6 +230,7 @@ async def _run_sse_server(host: str, port: int, ssl_certfile: str, ssl_keyfile: 
             Mount("/messages/", app=sse_transport.handle_post_message),
         ],
     )
+    app = HeaderAuthMiddleware(app)
 
     import uvicorn
     config = uvicorn.Config(
@@ -229,6 +275,7 @@ async def _run_streamable_http_server(host: str, port: int, ssl_certfile: str, s
             Route("/mcp", endpoint=handle_http, methods=["GET", "POST", "DELETE"]),
         ],
     )
+    app = HeaderAuthMiddleware(app)
 
     import uvicorn
     config = uvicorn.Config(
@@ -251,16 +298,18 @@ def main() -> None:
     register_handlers()
     register_auth_middleware()
 
+    # Diagnostics go to stderr: in stdio mode stdout carries the JSON-RPC
+    # stream and must stay clean.
     if args.transport == "sse":
         protocol = "https" if args.ssl_certfile else "http"
-        print(f"Kali MCP Server starting on {protocol}://{args.host}:{args.port} (SSE transport)")
+        print(f"Kali MCP Server starting on {protocol}://{args.host}:{args.port} (SSE transport)", file=sys.stderr)
         asyncio.run(_run_sse_server(args.host, args.port, args.ssl_certfile, args.ssl_keyfile))
     elif args.transport == "streamable-http":
         protocol = "https" if args.ssl_certfile else "http"
-        print(f"Kali MCP Server starting on {protocol}://{args.host}:{args.port} (Streamable HTTP transport)")
+        print(f"Kali MCP Server starting on {protocol}://{args.host}:{args.port} (Streamable HTTP transport)", file=sys.stderr)
         asyncio.run(_run_streamable_http_server(args.host, args.port, args.ssl_certfile, args.ssl_keyfile))
     else:
-        print("Kali MCP Server starting (stdio transport)")
+        print("Kali MCP Server starting (stdio transport)", file=sys.stderr)
         asyncio.run(_run_stdio_server())
 
 

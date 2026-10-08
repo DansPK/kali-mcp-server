@@ -8,6 +8,7 @@ from . import (
     forensics,
     post_exploit,
     misc,
+    zap,
 )
 from .base import run_bash
 
@@ -15,7 +16,7 @@ from .base import run_bash
 ALL_TOOLS: list = []
 TOOL_DISPATCH: dict = {}
 
-for mod in (network, web, password, recon, metasploit, evasion, forensics, post_exploit, misc):
+for mod in (network, web, password, recon, metasploit, evasion, forensics, post_exploit, misc, zap):
     ALL_TOOLS.extend(getattr(mod, "TOOLS", []))
     TOOL_DISPATCH.update(getattr(mod, "DISPATCH", {}))
 

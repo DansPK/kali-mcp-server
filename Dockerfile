@@ -1,6 +1,6 @@
 FROM kalilinux/kali-rolling
 
-LABEL description="Kali MCP Server — 59 security tools exposed via Model Context Protocol"
+LABEL description="Kali MCP Server — 67 security tools exposed via Model Context Protocol"
 
 RUN echo "deb http://archive.kali.org/kali kali-rolling main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
     apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -16,6 +16,16 @@ RUN echo "deb http://archive.kali.org/kali kali-rolling main contrib non-free no
     bettercap hash-identifier cewl proxychains4 wifite reaver \
     && rm -rf /var/lib/apt/lists/* && \
     pip3 install --break-system-packages --no-cache-dir volatility3
+
+# Optionally bundle OWASP ZAP + a Java 17/21 LTS JVM for the zap_* tools.
+# It is heavy (~400 MB), so it is opt-in:
+#   docker build --build-arg INSTALL_ZAP=true -t kali-mcp:latest .
+ARG INSTALL_ZAP=false
+RUN if [ "$INSTALL_ZAP" = "true" ]; then \
+        apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            zaproxy openjdk-21-jre-headless \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 WORKDIR /app
 COPY . .
