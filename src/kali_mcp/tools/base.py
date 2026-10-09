@@ -187,7 +187,9 @@ def run_tool(command: list[str], timeout: int = DEFAULT_TIMEOUT, input_data: str
             capture_output=True,
             text=True,
             timeout=timeout,
-            input=input_data if input_data else None,
+            # Always use a separate pipe and close it after the supplied input.
+            # Inheriting stdin lets scanners consume the MCP protocol stream.
+            input=input_data,
         )
         output = result.stdout.strip() or result.stderr.strip()
         if result.returncode != 0:

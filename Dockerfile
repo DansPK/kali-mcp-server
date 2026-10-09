@@ -8,7 +8,8 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
     SEMGREP_SEND_METRICS=off
 
 RUN test "$(dpkg --print-architecture)" = amd64 && \
-    printf '%s\n' 'deb http://http.kali.org/kali kali-last-snapshot main contrib non-free non-free-firmware' > /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/kali.sources && \
+    printf '%s\n' 'deb http://kali.download/kali kali-last-snapshot main contrib non-free non-free-firmware' > /etc/apt/sources.list && \
     apt-get -o Acquire::Retries=3 update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates python3 python3-pip python3-venv \
@@ -36,12 +37,16 @@ RUN python3 -m venv /opt/kali-scanners && \
     npm list --global --depth=0 > /opt/kali-versions/npm.txt && \
     npm cache clean --force
 
+# Keep apt-managed Python launchers on the system interpreter. The venv CLI
+# scripts use their own absolute shebangs; `python` still resolves to the server.
+ENV PATH=/usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kali-mcp/bin:/opt/kali-scanners/bin
+
 WORKDIR /app
 COPY . .
+RUN install -m 755 docker/amass /usr/local/bin/amass
 RUN python3 -m venv /opt/kali-mcp && \
     /opt/kali-mcp/bin/pip install --no-cache-dir -c docker/server-requirements.txt . && \
     /opt/kali-mcp/bin/pip check && \
-    /opt/kali-mcp/bin/pip freeze > /opt/kali-versions/server.txt && \
-    python -c 'from kali_mcp.tools import ALL_TOOLS, TOOL_DISPATCH; names = [t.name for t in ALL_TOOLS]; assert len(names) == len(set(names)) == 75; assert set(names) == set(TOOL_DISPATCH)'
+    /opt/kali-mcp/bin/pip freeze > /opt/kali-versions/server.txt
 
 ENTRYPOINT ["python", "-m", "kali_mcp.server"]

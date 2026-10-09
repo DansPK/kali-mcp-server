@@ -1,5 +1,7 @@
 import os
 import shlex
+import tempfile
+from pathlib import Path
 
 from mcp.types import Tool
 from .base import run_tool
@@ -65,11 +67,19 @@ def semgrep(path: str, config: str = "auto", opts: str = "") -> str:
 def gitleaks(path: str, opts: str = "") -> str:
     if not path or not os.path.isdir(path):
         return "[error] path must be an existing directory"
-    return run_tool([
-        "gitleaks", "dir", "--no-banner", "--redact", "--exit-code", "0",
-        "--report-format", "json", "--report-path", "/dev/stdout",
-        *shlex.split(opts), os.path.abspath(path),
-    ], timeout=600)
+    # Gitleaks does not reliably write reports to /dev/stdout when captured.
+    with tempfile.TemporaryDirectory(prefix="kali-gitleaks-") as location:
+        report = Path(location) / "report.json"
+        output = run_tool([
+            "gitleaks", "dir", "--no-banner", "--redact", "--exit-code", "0",
+            "--report-format", "json", "--report-path", str(report),
+            *shlex.split(opts), os.path.abspath(path),
+        ], timeout=600)
+        if output.startswith("[error]"):
+            return output
+        if not report.is_file():
+            return f"[error] Gitleaks did not produce a JSON report\n{output}"
+        return report.read_text()
 
 
 def trivy(path: str, opts: str = "") -> str:

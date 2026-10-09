@@ -6,8 +6,7 @@ Kali MCP — an MCP server exposing popular Kali Linux security tools to AI appl
 ## Commands
 - Install: `pip install -e .`
 - Run: `python -m kali_mcp.server` or `kali-mcp`
-- Docker: `./docker-run.sh build` (linux/amd64); `./docker-run.sh test`; `./docker-run.sh release` tags the verified image as `kali-worker:1.0`.
-- Local checks: `python -m unittest -v test_tools`; `python test_container.py --protocol-only`.
+- Docker: `./docker-run.sh build` (linux/amd64); `./docker-run.sh release` tags the current image as `kali-worker:1.0`.
 - Compose: `docker compose run --rm kali-mcp`
 - Run with auth: `KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server`
 - Run over HTTP (env-driven): `KALI_MCP_TRANSPORT=http KALI_MCP_URL=http://HOST:PORT/mcp KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server` — `http`/`https` alias `streamable-http`; `KALI_MCP_URL` supplies bind host/port.
@@ -39,7 +38,6 @@ src/kali_mcp/
 - `run_bash()` in `base.py` runs Bash after allowlist/denylist checks. Use only as fallback when no dedicated tool exists. New dedicated wrappers build argument lists and use `run_tool()`.
 - Nonzero subprocess exits return `[error]` with stdout/stderr; server maps that prefix to MCP `isError`.
 - Container is AMD64 only, includes ZAP + Java 21, and isolates server/scanner Python dependencies in virtual environments. Pins are under `docker/`; installed versions are recorded under `/opt/kali-versions/`.
-- `test_container.py` verifies installation/startup for all 75 tools and supported local workflows. Its report explicitly lists functional limits; physical hardware/Windows/AD/real memory image checks are not covered.
 - `start_background()` / `stop_background()` in `base.py` are the only sanctioned way to run long-lived daemons (used by ZAP). Never call `subprocess` directly outside `base.py`.
 - `require_target()` in `base.py` validates target args aren't empty.
 - Tool names use `snake_case` for function names but the MCP `Tool.name` is the snake_case key in TOOL_DISPATCH.

@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+# Help/version do not need the datasets downloaded by Kali's launcher.
+case "${1:-}" in
+    ""|-h|-help|--help|-version|--version)
+        exec /usr/lib/amass/amass "$@"
+        ;;
+esac
+
+# Preserve Kali's dataset setup for actual operations.
+exec /usr/bin/amass "$@"

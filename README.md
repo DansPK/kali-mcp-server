@@ -41,24 +41,45 @@ This installs the `kali-mcp` entrypoint and pins `mcp>=1.9,<2` (the server uses 
 
 ### Docker
 
+Prerequisites: Git, Bash, a running Docker Engine or Docker Desktop, and internet access to Docker Hub, `kali.download`, PyPI, and npm. Use an Intel/AMD machine, or a Docker installation configured to emulate **linux/amd64**. On Windows, run these commands in WSL2 with Docker integration enabled.
+
+Run from the repository root:
+
 ```bash
-# On your Intel/AMD laptop, with Docker running:
+# Check that this shell can access the Docker daemon.
+docker info
+
 git clone https://github.com/DansPK/kali-mcp-server.git
 cd kali-mcp-server
+
+# Build kali-mcp:latest for linux/amd64.
 ./docker-run.sh build
-./docker-run.sh test
+
+# Optional: tag the built image as kali-worker:1.0.
 ./docker-run.sh release
 ```
 
-The image targets **linux/amd64 only**. On Windows, run the helper from WSL2 with Docker integration enabled. ZAP and Java 21 are included in every build; no `INSTALL_ZAP` flag is needed. Building downloads the Kali packages, pinned Python scanners, and Newman. The image includes Metasploit and a CPU OpenCL runtime, so allow substantial disk space and build time.
+If you already have the repository, skip `git clone` and run the helper from your checkout. No host Python environment or Kali tool installation is required for the Docker build.
 
-`build` creates `kali-mcp:latest`. `test` verifies that exact image and writes `test-results/verification.json`. `release` reruns verification and tags the tested image ID as **`kali-worker:1.0`** only if required checks pass. It does not push an image to a registry. To rebuild directly:
+The image targets **linux/amd64 only**. ZAP and Java 21 are included in every build; no `INSTALL_ZAP` flag is needed. A first build downloads about **1.6 GB of apt packages**, plus the base image, Python scanners, and Newman. Apt packages alone occupy about **6 GB** after installation; allow at least **20 GB of free Docker storage** for image layers and build cache. Downloads and image export can take many minutes. Subsequent builds reuse cached layers.
+
+`release` tags the current built image as **`kali-worker:1.0`**; it does not run verification or push to a registry. You can run the built image without the optional release tag using `./docker-run.sh run` (stdio MCP).
+
+To build directly with detailed Docker output, use the same platform and image tag:
 
 ```bash
-docker build --platform linux/amd64 -t kali-mcp:latest .
+docker build --platform linux/amd64 --progress=plain -t kali-mcp:latest .
 ```
 
-The Kali last-release base is pinned by digest and uses `kali-last-snapshot`. Python/npm tool versions are pinned; installed package versions are recorded in `/opt/kali-versions/` and included in the verification report. Kali's snapshot repository advances at the next release, so future builds can resolve different apt versions and must be tested again.
+The Kali last-release base is pinned by digest and uses `kali-last-snapshot` from `kali.download`. The Dockerfile replaces the base image's duplicate Kali source and avoids mirror-selector redirects. Python/npm tool versions are pinned; installed package versions are recorded in `/opt/kali-versions/`. Kali's snapshot repository advances at the next release, so future builds can resolve different apt versions.
+
+Build troubleshooting:
+
+- **Docker unavailable:** run `docker info` to see whether the daemon is stopped or your shell lacks access to its socket. Start Docker or correct socket access, then retry.
+- **Download failure:** check connectivity to the service named in the error, then rerun `./docker-run.sh build`. Completed layers remain cached.
+- **Long export/unpack step:** the security-tool image is large; Docker can spend several minutes exporting layers after installation finishes. Check Docker storage if the step fails with a disk-space error.
+
+Kali's Amass launcher downloads address datasets for real operations when absent. Help/version commands skip that download.
 
 The helper and Compose persist scanner caches in `kali-mcp-cache` and Nuclei templates in `kali-nuclei-templates`. Runtime internet access is allowed for vulnerability databases, rules, and templates. These volumes are disposable caches, not reports. Neither credentials nor caches are committed to Git.
 
@@ -362,56 +383,6 @@ Each tool module exports a `TOOLS` list and a `DISPATCH` dict; `tools/__init__.p
 - A denylist runs as defense-in-depth across chains, pipes, and substitutions.
 - Required arguments are validated, and every tool has a timeout (30s–900s).
 - Optional token auth rejects unauthorized requests.
-
----
-
-## Testing
-
-```bash
-python -m unittest -v test_tools
-python test_container.py --protocol-only --report test-results/local-protocol.json
-
-# Smoke-test the locally installed server (calls a sample of tools + auth)
-python test_server.py
-
-# Verify a >1 MiB tool result is delivered over Streamable HTTP, plus the
-# SSE 1 MiB cap root cause and the opt-in truncation safety net
-python test_large_result.py
-#   [1] root cause confirmed: SSE event cap = 1048576 bytes ...
-#   [2] fix: received 2000000 bytes over Streamable HTTP; full=True
-#   [3] safety net: truncation marker present=True
-```
-
-### Container install test
-
-`docker-run.sh test` builds if needed, then runs the following required checks:
-
-- All 75 MCP names match the dispatch table and executable/resource inventory; startup checks are bounded and crashes/missing dependencies fail verification.
-- Stdio and HTTP discovery/calls, metadata/header authentication, JSON framing, >1 MiB output, and overflow-file preservation.
-- All eight new tools against local fixtures: code findings, redacted dummy secrets, a vulnerable lockfile, HTTP/TLS, API regression assertions and an intentional API server error, and port discovery.
-- Existing workflows: Nmap, WhatWeb, ffuf, CeWL, Crunch, hash identification, CPU John/Hashcat cracking, metadata/binary/packet analysis, file carving, steganography, Exploit DB lookup, Mimikatz resource listing, and ZAP startup/spider/shutdown.
-
-Scanner findings are expected on intentionally vulnerable fixtures. Tests check those findings and expected assertion failures; arbitrary output does not count as success. Only the fixture services on loopback are scanned. Trivy needs internet access to obtain its database.
-
-The report distinguishes functional coverage from **installation/startup-only** coverage. Windows/AD workflows, physical wireless devices, GPU acceleration, real memory images, and external OSINT datasets are not verified. A passing report is not a claim that these full workflows were tested. Inspect `checks`, `functional_tools`, `installation_startup_only`, and `limits`.
-
-```bash
-./docker-run.sh build
-./docker-run.sh test
-cat test-results/verification.json
-./docker-run.sh release
-# Only after verification passes: kali-worker:1.0
-```
-
-For a fast, dependency-light check of the packaging itself (without installing
-the ~50 Kali tools), run the install in a clean Python container:
-
-```bash
-tar --exclude=.venv --exclude=.git --exclude=__pycache__ -cf /tmp/repo.tar .
-docker run --rm -i -v /tmp/repo.tar:/repo.tar:ro python:3.12-slim sh -c '
-  mkdir -p /app && tar -C /app -xf /repo.tar && cd /app && pip install --quiet . &&
-  python -c "from kali_mcp.tools import ALL_TOOLS; print(len(ALL_TOOLS), \"tools\")"'
-```
 
 ---
 

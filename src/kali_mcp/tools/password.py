@@ -1,3 +1,5 @@
+import shlex
+
 from mcp.types import Tool
 from ..tools.base import run_tool, require_target
 
@@ -109,11 +111,11 @@ def john(hashfile: str, wordlist: str = "", fmt: str = "", opts: str = "") -> st
         return "hashfile is required"
     cmd = ["john", hashfile]
     if wordlist:
-        cmd.extend(["--wordlist", wordlist])
+        cmd.append(f"--wordlist={wordlist}")
     if fmt:
-        cmd.extend(["--format", fmt])
+        cmd.append(f"--format={fmt}")
     if opts:
-        cmd.extend(opts.split())
+        cmd.extend(shlex.split(opts))
     return run_tool(cmd, timeout=600)
 
 

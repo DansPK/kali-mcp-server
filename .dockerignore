@@ -19,5 +19,4 @@ build/
 Thumbs.db
 .opencode.json
 docker-compose.yml
-test-results/
 .schemathesis/

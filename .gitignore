@@ -16,7 +16,6 @@ build/
 .DS_Store
 Thumbs.db
 .opencode.json
-test-results/
 .schemathesis/
 
 # nuclei runtime artifacts

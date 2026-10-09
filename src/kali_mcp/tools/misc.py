@@ -236,10 +236,7 @@ def impacket(module: str, target: str, opts: str = "") -> str:
 def mimikatz(opts: str = "") -> str:
     if opts:
         return "[error] Mimikatz execution requires Windows; call without opts to list packaged resources"
-    cmd = ["mimikatz"]
-    if opts:
-        cmd.extend(opts.split())
-    return run_tool(cmd, timeout=60)
+    return run_tool(["mimikatz"], timeout=60, input_data="\n")
 
 
 def bettercap(iface: str = "", caplet: str = "", opts: str = "") -> str:
