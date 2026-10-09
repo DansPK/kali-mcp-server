@@ -1,33 +1,78 @@
 # Kali MCP
 
-An [MCP](https://modelcontextprotocol.io) server that exposes **75 security tools**, including Kali utilities, source-code scanners, API tests, and OWASP ZAP, to AI applications.
+Kali MCP exposes **75 security tools** to AI applications through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). It supports network and web scanning, source-code analysis, API testing, forensics, and OWASP ZAP workflows.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![MCP 1.x](https://img.shields.io/badge/mcp-1.x-green)
 
----
+## Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Client configuration](#client-configuration)
+- [Configuration](#configuration)
+- [Available tools](#available-tools)
+- [Project structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Responsible use](#responsible-use)
+- [License](#license)
 
 ## Features
 
-- **75 tools** across 13 categories, all callable by name through the MCP `tools/list` / `tools/call` protocol.
-- **Three transports** — `stdio` (default), `sse`, and `streamable-http`.
-- **Optional token auth** via `_meta.auth_token` or HTTP headers, with TLS support.
-- **Safe execution layer** — every subprocess goes through one gateway with allow/deny lists, required-argument validation, and per-tool timeouts.
-- **OWASP ZAP integration** — auto-started headless daemon driven over its REST API (spider, active scan, alerts, reports).
-- **Container-ready** — `Dockerfile`, `docker-compose.yml`, and `docker-run.sh`.
-
----
+- 75 MCP tools across 13 categories.
+- Stdio, Streamable HTTP, and legacy SSE transports.
+- Optional token authentication and HTTPS support.
+- Subprocess timeouts, argument validation, and command restrictions for the shell fallback.
+- Headless OWASP ZAP integration for crawling, scanning, alerts, and reports.
+- An AMD64 Kali Docker image with isolated Python environments and Java 21.
 
 ## Requirements
 
-- Python **3.10+**
-- Kali Linux, or any system with the corresponding CLI tools installed and on `$PATH`
-- For `zap_*` tools: `zaproxy` plus a **Java 17/21 LTS** JVM (ZAP 2.17 hangs on Java 25)
+| Deployment | Requirements |
+| --- | --- |
+| Docker | Git, Bash, Docker Engine or Docker Desktop, and internet access for image builds |
+| Local | Python 3.10+, Kali Linux or the required CLI tools installed on `PATH` |
+| Local ZAP | `zaproxy` and a Java 17 or 21 JVM |
 
----
+The Docker image targets **linux/amd64**. Other architectures require AMD64 emulation. On Windows, run the helper in WSL2 with Docker integration enabled.
+
+Allow at least **20 GB of free Docker storage** for the image and build cache. First builds download roughly 1.6 GB of apt packages plus the base image and Python/npm dependencies, and can take many minutes. Scanners may also download vulnerability databases, rules, or datasets at runtime.
 
 ## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/DansPK/kali-mcp-server.git
+cd kali-mcp-server
+```
+
+### Docker
+
+Confirm Docker is accessible, then build the image:
+
+```bash
+docker info
+./docker-run.sh build
+```
+
+This creates `kali-mcp:latest`. To build directly with detailed output:
+
+```bash
+docker build --platform linux/amd64 --progress=plain -t kali-mcp:latest .
+```
+
+Optionally create the `kali-worker:1.0` tag:
+
+```bash
+./docker-run.sh release
+```
+
+`release` tags the current image; it does not run verification or push to a registry. Installed package versions are recorded inside the image under `/opt/kali-versions/`. The base image is pinned by digest, but Kali snapshot packages can change between releases.
 
 ### Local
 
@@ -37,266 +82,140 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-This installs the `kali-mcp` entrypoint and pins `mcp>=1.9,<2` (the server uses the MCP 1.x API).
-
-### Docker
-
-Prerequisites: Git, Bash, a running Docker Engine or Docker Desktop, and internet access to Docker Hub, `kali.download`, PyPI, and npm. Use an Intel/AMD machine, or a Docker installation configured to emulate **linux/amd64**. On Windows, run these commands in WSL2 with Docker integration enabled.
-
-Run from the repository root:
-
-```bash
-# Check that this shell can access the Docker daemon.
-docker info
-
-git clone https://github.com/DansPK/kali-mcp-server.git
-cd kali-mcp-server
-
-# Build kali-mcp:latest for linux/amd64.
-./docker-run.sh build
-
-# Optional: tag the built image as kali-worker:1.0.
-./docker-run.sh release
-```
-
-If you already have the repository, skip `git clone` and run the helper from your checkout. No host Python environment or Kali tool installation is required for the Docker build.
-
-The image targets **linux/amd64 only**. ZAP and Java 21 are included in every build; no `INSTALL_ZAP` flag is needed. A first build downloads about **1.6 GB of apt packages**, plus the base image, Python scanners, and Newman. Apt packages alone occupy about **6 GB** after installation; allow at least **20 GB of free Docker storage** for image layers and build cache. Downloads and image export can take many minutes. Subsequent builds reuse cached layers.
-
-`release` tags the current built image as **`kali-worker:1.0`**; it does not run verification or push to a registry. You can run the built image without the optional release tag using `./docker-run.sh run` (stdio MCP).
-
-To build directly with detailed Docker output, use the same platform and image tag:
-
-```bash
-docker build --platform linux/amd64 --progress=plain -t kali-mcp:latest .
-```
-
-The Kali last-release base is pinned by digest and uses `kali-last-snapshot` from `kali.download`. The Dockerfile replaces the base image's duplicate Kali source and avoids mirror-selector redirects. Python/npm tool versions are pinned; installed package versions are recorded in `/opt/kali-versions/`. Kali's snapshot repository advances at the next release, so future builds can resolve different apt versions.
-
-Build troubleshooting:
-
-- **Docker unavailable:** run `docker info` to see whether the daemon is stopped or your shell lacks access to its socket. Start Docker or correct socket access, then retry.
-- **Download failure:** check connectivity to the service named in the error, then rerun `./docker-run.sh build`. Completed layers remain cached.
-- **Long export/unpack step:** the security-tool image is large; Docker can spend several minutes exporting layers after installation finishes. Check Docker storage if the step fails with a disk-space error.
-
-Kali's Amass launcher downloads address datasets for real operations when absent. Help/version commands skip that download.
-
-The helper and Compose persist scanner caches in `kali-mcp-cache` and Nuclei templates in `kali-nuclei-templates`. Runtime internet access is allowed for vulnerability databases, rules, and templates. These volumes are disposable caches, not reports. Neither credentials nor caches are committed to Git.
-
-To scan your own project, mount it into the container and use that container path in MCP arguments:
-
-```bash
-docker run --rm -i --platform linux/amd64 \
-  -v "$PWD/project:/workspace:ro" kali-worker:1.0
-# MCP: semgrep {"path":"/workspace"}
-# MCP: gitleaks {"path":"/workspace"}
-# MCP: trivy {"path":"/workspace"}
-```
-
----
+This installs the `kali-mcp` entrypoint and the MCP Python dependency (`mcp>=1.9,<2`). Install the security tools you need separately; the Python package does not install their executables.
 
 ## Quickstart
 
-### stdio (default)
+### Stdio
+
+Stdio is the default transport for both local and Docker deployments. An MCP client launches the process and communicates through stdin/stdout.
 
 ```bash
-python -m kali_mcp.server          # or: kali-mcp
+# Docker
+./docker-run.sh run
+
+# Local
+kali-mcp
 ```
 
-The server speaks MCP over stdin/stdout — use this when the MCP client spawns the process itself.
-
-### Network transport
-
-Run the server on a socket so remote clients can connect:
+The equivalent Docker command is:
 
 ```bash
-# Streamable HTTP (recommended for remote clients) — endpoint: http://HOST:PORT/mcp
-python -m kali_mcp.server -t streamable-http -H 0.0.0.0 -p 8080
-
-# SSE legacy transport — endpoint: http://HOST:PORT/sse
-python -m kali_mcp.server -t sse -H 0.0.0.0 -p 8080
-
-# With auth + HTTPS
-python -m kali_mcp.server -t streamable-http -H 0.0.0.0 -p 8443 \
-  --auth-token secret123 --ssl-certfile cert.pem --ssl-keyfile key.pem
+docker run --rm -i --platform linux/amd64 \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  kali-mcp:latest
 ```
 
-Or configure entirely from the environment:
+Keep `-i` enabled for stdio. The helper also persists scanner caches and Nuclei templates in Docker volumes. Compose uses stdio as well:
 
 ```bash
-export KALI_MCP_TRANSPORT=http
-export KALI_MCP_URL=http://192.168.1.5:8080/mcp
-export KALI_MCP_AUTH_TOKEN=secret123
-python -m kali_mcp.server
+docker compose run --rm kali-mcp
 ```
 
-Verify it is up:
+### Streamable HTTP
+
+Run the container on host port **8096**:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H 'Authorization: Bearer secret123' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+docker run --rm --name kali-mcp-http --platform linux/amd64 \
+  -p 8096:8080 \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -e KALI_MCP_AUTH_TOKEN=change-me \
+  kali-mcp:latest \
+  -t streamable-http -H 0.0.0.0 -p 8080
 ```
 
----
+Connect your client to **`http://localhost:8096/mcp`** with `Authorization: Bearer change-me`. Replace `change-me` with your own token. The container listens on port 8080; Docker publishes it on host port 8096.
 
-## Transports
+For a local installation:
 
-| Transport | Flag | Endpoint | Use when |
-|---|---|---|---|
-| `stdio` | `-t stdio` | stdin/stdout | The client launches the server process (Claude Desktop, most editors) |
-| `streamable-http` | `-t streamable-http` | `/mcp` | Remote/shared server, multiple clients, easiest to firewall |
-| `sse` | `-t sse` | `/sse` (GET) + `/messages/` (POST) | Legacy remote clients that only speak SSE |
+```bash
+KALI_MCP_AUTH_TOKEN=change-me kali-mcp \
+  -t streamable-http -H 0.0.0.0 -p 8096
+```
 
----
+### Transport reference
 
-## Configuration
+| Transport | Flag | Endpoint |
+| --- | --- | --- |
+| Stdio | `-t stdio` (default) | stdin/stdout |
+| Streamable HTTP | `-t streamable-http` or `-t http` | `/mcp` |
+| Legacy SSE | `-t sse` | `/sse` and `/messages/` |
 
-### CLI flags
-
-| Flag | Env var | Default | Description |
-|---|---|---|---|
-| `--host`, `-H` | `KALI_MCP_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for all interfaces) |
-| `--port`, `-p` | `KALI_MCP_PORT` | `8080` | Listening port |
-| `--url` | `KALI_MCP_URL` | *(empty)* | Bind host/port derived from this URL (e.g. `http://192.168.1.5:8080/mcp`); the flag overrides `--host`/`--port` |
-| `--transport`, `-t` | `KALI_MCP_TRANSPORT` | `stdio` | `stdio` \| `sse` \| `streamable-http` (aliases: `http`, `https` → `streamable-http`) |
-| `--auth-token` | `KALI_MCP_AUTH_TOKEN` | *(empty)* | Require this token on every request |
-| `--ssl-certfile` | `KALI_MCP_SSL_CERTFILE` | *(empty)* | PEM certificate for HTTPS |
-| `--ssl-keyfile` | `KALI_MCP_SSL_KEYFILE` | *(empty)* | PEM private key for HTTPS |
-
-### Response framing / large results
-
-Over Streamable HTTP the server replies to request/response calls with
-`Content-Type: application/json`, **not** an SSE frame. This matters because
-clients built on httpx-sse / httpx2 cap a single SSE event at 1 MiB
-(`DEFAULT_MAX_EVENT_SIZE_BYTES = 1048576`); a tool result bigger than that
-aborts the call with `-32000 "...exceeded the 1048576 byte limit"`. A JSON
-reply has no per-event cap, so arbitrarily large results (e.g.
-`nuclei -jsonl`) are delivered intact. SSE is reserved for
-progress/notifications, which this server does not emit. The legacy `/sse`
-transport is inherently event-framed, so prefer Streamable HTTP for large
-results.
-
-| Env var | Default | Description |
-|---|---|---|
-| `KALI_MCP_JSON_RESPONSE` | `true` | Return request responses as `application/json` (avoids the SSE 1 MiB cap). Set `false` only for SSE-only clients. |
-| `KALI_MCP_MAX_RESULT_BYTES` | `0` (unlimited) | Optional safety net: cap a single tool result. On overflow the leading bytes are returned with a `…[truncated: N of M bytes]` marker and the full output is written to a file on the server. |
-
-### ZAP-specific
-
-| Env var | Default | Description |
-|---|---|---|
-| `KALI_ZAP_HOST` | `127.0.0.1` | ZAP daemon bind/connect address |
-| `KALI_ZAP_PORT` | `8090` | ZAP daemon port |
-
----
+For HTTPS, pass `--ssl-certfile cert.pem --ssl-keyfile key.pem` with a network transport. The `https` transport alias alone does not enable TLS.
 
 ## Client configuration
 
-### Claude Desktop / stdio clients
-
-```json
-{
-  "mcpServers": {
-    "kali": {
-      "command": "/path/to/kali-mcp-server/.venv/bin/python",
-      "args": ["-m", "kali_mcp.server"]
-    }
-  }
-}
-```
-
-### OpenCode (remote, with auth)
-
-```json
-{
-  "mcp": {
-    "kali": {
-      "type": "remote",
-      "url": "http://127.0.0.1:8080/mcp",
-      "headers": { "Authorization": "Bearer secret123" },
-      "enabled": true
-    }
-  }
-}
-```
-
-### Docker
+For clients that accept an `mcpServers` configuration, launch the Docker image over stdio:
 
 ```json
 {
   "mcpServers": {
     "kali": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "--privileged", "kali-mcp:latest"]
+      "args": [
+        "run", "--rm", "-i", "--platform", "linux/amd64",
+        "--cap-add=NET_ADMIN", "--cap-add=NET_RAW",
+        "kali-mcp:latest"
+      ]
     }
   }
 }
 ```
 
-Some tools (`nmap`, `masscan`, `tcpdump`) need network capabilities. The helper grants `NET_ADMIN` and `NET_RAW`; physical wireless devices and GPU access require host-specific configuration.
+For a local stdio server, use the absolute path to `.venv/bin/python` as the command and `["-m", "kali_mcp.server"]` as its arguments.
 
-With auth:
+For HTTP clients, configure the URL `http://localhost:8096/mcp` and the authentication header used above. Client-specific configuration formats may differ.
 
-```json
-{
-  "mcpServers": {
-    "kali": {
-      "command": "docker",
-      "args": ["run", "--rm", "-i", "--privileged", "-e", "KALI_MCP_AUTH_TOKEN=secret123", "kali-mcp:latest"]
-    }
-  }
-}
-```
-
-### Docker Compose
+The repository includes a command-line client. After local installation, list tools on the HTTP server:
 
 ```bash
-KALI_MCP_AUTH_TOKEN=secret123 docker compose run --rm kali-mcp
+python client/kali_mcp_client.py \
+  -t streamable-http -u http://localhost:8096/mcp \
+  --auth-token change-me --list
 ```
 
----
+See [client/README.md](client/README.md) for interactive usage and tool calls.
 
-## Authentication (optional)
+## Configuration
 
-Enable token auth with the env var or flag:
+CLI arguments override the corresponding environment defaults. `--url` overrides the bind host and port; its path does not change the `/mcp` endpoint.
 
-```bash
-KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server
-kali-mcp --auth-token=secret123
-```
+| CLI argument | Environment variable | Default |
+| --- | --- | --- |
+| `--transport`, `-t` | `KALI_MCP_TRANSPORT` | `stdio` |
+| `--host`, `-H` | `KALI_MCP_HOST` | `127.0.0.1` |
+| `--port`, `-p` | `KALI_MCP_PORT` | `8080` |
+| `--url`, `-u` | `KALI_MCP_URL` | Unset |
+| `--auth-token` | `KALI_MCP_AUTH_TOKEN` | Unset |
+| `--ssl-certfile` | `KALI_MCP_SSL_CERTFILE` | Unset |
+| `--ssl-keyfile` | `KALI_MCP_SSL_KEYFILE` | Unset |
 
-Clients may authenticate in either of two ways:
+`KALI_MCP_URL` supplies the bind host/port when `KALI_MCP_HOST` and `KALI_MCP_PORT` are unset. Network services inside Docker must bind to `0.0.0.0` to accept connections through published ports.
 
-1. **Per-request `_meta`** (works on every transport):
+### Authentication
 
-   ```json
-   {
-     "jsonrpc": "2.0",
-     "id": 1,
-     "method": "tools/call",
-     "params": {
-       "name": "nmap",
-       "arguments": { "target": "127.0.0.1" },
-       "_meta": { "auth_token": "secret123" }
-     }
-   }
-   ```
+When a token is configured, `tools/list` and `tools/call` requests must authenticate using one of:
 
-2. **HTTP headers** (SSE / Streamable HTTP only) — handy for clients that only support custom headers:
+- HTTP header: `Authorization: Bearer <token>` or `X-Auth-Token: <token>`.
+- Request metadata on any transport: `params._meta.auth_token`.
 
-   - `Authorization: Bearer <token>`
-   - `X-Auth-Token: <token>`
+Missing or incorrect tokens return MCP error code `-32001`. Without a configured token, authentication is disabled. The bundled client supports `--auth-token` for all transports.
 
-Unauthorized requests are rejected with MCP error code `-32001`. When no token is configured, all requests are accepted.
+### Results and ZAP
 
----
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `KALI_MCP_JSON_RESPONSE` | `true` | Use JSON responses for Streamable HTTP; avoids SSE event-size limits in some clients |
+| `KALI_MCP_MAX_RESULT_BYTES` | `0` | Cap a tool result in bytes; `0` is unlimited. Overflow includes a truncation marker and a server-side file containing the full result |
+| `KALI_ZAP_HOST` | `127.0.0.1` | ZAP daemon address |
+| `KALI_ZAP_PORT` | `8090` | ZAP daemon port |
 
-## Tools
+ZAP starts automatically when needed and is reused across calls. Use `zap_stop` to shut it down. The Docker image includes ZAP and Java 21.
 
-75 tools across 13 categories — see [TOOLS.md](TOOLS.md) for details.
+## Available tools
+
+See [TOOLS.md](TOOLS.md) for the complete tool reference.
 
 | Category | Tools |
 |---|---|
@@ -314,85 +233,57 @@ Unauthorized requests are rejected with MCP error code `-32001`. When no token i
 | Misc | aircrack_ng, responder, impacket, mimikatz, bettercap, hash_identifier, cewl, proxychains, wifite, reaver |
 | Meta | run_command |
 
----
+### Scan local files with Docker
 
-## OWASP ZAP
-
-The `zap_*` tools drive a headless [OWASP ZAP](https://www.zaproxy.org/) daemon over its REST API (stdlib only — no extra Python dependency). The daemon is auto-started on first use and reused across calls.
+Mount your project and pass its container path to tools such as `semgrep`, `gitleaks`, or `trivy`:
 
 ```bash
-# Install ZAP (Kali/Ubuntu)
-apt install zaproxy
-
-# ZAP 2.17 needs a Java 17/21 LTS JVM; it hangs on Java 25.
-apt install openjdk-21-jre-headless
+docker run --rm -i --platform linux/amd64 \
+  -v "$PWD/project:/workspace:ro" kali-mcp:latest
 ```
 
-The server auto-selects a 17/21 JVM if present. Typical workflow:
+For example, call `semgrep` with `{"path":"/workspace"}`. Files referenced by tool arguments must exist in the server's filesystem.
 
-```
-zap_scan   { "url": "http://target" }     # spider + active scan + findings
-zap_alerts { "risk": "High" }             # review findings
-zap_report { "template": "traditional-html" }
-zap_stop                                   # free resources when done
-```
+Volatility uses the Volatility 3 `vol` CLI with namespaced plugins such as `windows.pslist`. Mimikatz lists packaged Windows resources; execution requires Windows. Physical wireless devices, GPUs, and Windows/AD workflows require additional environment-specific setup.
 
-`zap_report` supports `traditional-html`, `traditional-md`, `modern`, `high-level-report`, and `sarif-json`. (ZAP 2.17's `traditional-json`/`traditional-xml` templates are broken when alerts exist.)
+## Project structure
 
-> Only use `zap_active_scan` / `zap_scan` against systems you are authorized to test.
-
----
-
-## Architecture
-
-```
+```text
 src/kali_mcp/
-├── server.py          # Entrypoint: CLI/transports, tool registry, dispatch, auth middleware
-└── tools/
-    ├── base.py        # run_tool() subprocess gateway + start_background() for daemons
-    ├── network.py     # Network scanning, packet capture, DNS/SNMP enumeration
-    ├── web.py         # Web vulnerability scanning, fuzzing, injection tools
-    ├── source.py      # Semgrep, Gitleaks, Trivy
-    ├── api.py         # Schemathesis, Newman
-    ├── password.py    # Brute-force, hash cracking, wordlist generation
-    ├── recon.py       # OSINT, SMB/DNS enumeration, metadata extraction
-    ├── metasploit.py  # Full Metasploit Framework integration
-    ├── evasion.py     # AV evasion payload crafting and enumeration
-    ├── forensics.py   # Memory analysis, file carving, steganography
-    ├── post_exploit.py # AD pentesting, WinRM shells, pivoting
-    ├── misc.py        # Wireless attacks, credential capture, MITM
-    └── zap.py         # OWASP ZAP daemon REST API: spider, scan, alerts, reports
+├── server.py       # CLI, transports, authentication, and MCP handlers
+└── tools/          # Tool schemas, argument builders, and execution gateway
+client/             # Cross-platform MCP command-line client
+docker/             # Pinned dependencies and container launcher adjustments
+Dockerfile          # AMD64 Kali image
+docker-compose.yml  # Stdio service and cache volumes
+docker-run.sh       # Build, run, release-tag, and Compose helper
+TOOLS.md            # Tool reference
 ```
 
-Each tool module exports a `TOOLS` list and a `DISPATCH` dict; `tools/__init__.py` merges them into `ALL_TOOLS` / `TOOL_DISPATCH`.
+## Troubleshooting
 
-### Compatibility notes
+| Problem | Action |
+| --- | --- |
+| Docker is unavailable | Run `docker info`; start the daemon or correct socket access |
+| Build downloads fail | Check access to Docker Hub, `kali.download`, PyPI, and npm, then rerun the build |
+| Image export takes a long time | Allow several minutes for large layers and check free Docker storage |
+| HTTP client cannot connect | Check the published port, `-t streamable-http`, and the container's `-H 0.0.0.0` setting |
+| Tool reports an authentication error | Match the client token to the server's configured token |
+| Local tool executable is missing | Install the corresponding utility and make it available on `PATH`, or use Docker |
+| Stdio client hangs | Keep Docker stdin open with `-i` and configure the process in an MCP client |
 
-- `volatility` uses Volatility 3's `vol` CLI: pass `image` and a namespaced `plugin` such as `windows.pslist`. The old `profile` argument is removed; symbols may need downloads or local setup.
-- `hash_identifier` uses non-interactive `hashid` with the same `hash_str` / `hashfile` arguments. The older interactive `hash-identifier` program fails when stdin closes.
-- `mimikatz` lists installed Windows resources. Passing execution options returns an error; Windows execution is outside this Linux container.
-- Failed commands retain stdout/stderr and set MCP `isError`. Gitleaks findings remain successful scan results with redacted JSON. Schemathesis/Newman failing checks return an error plus their report.
-- New wrappers parse quoted `opts` into argument lists and use bounded timeouts. `httpx_probe` calls `httpx-toolkit`, avoiding the Python `httpx` executable name conflict.
+Some tools need network capabilities; the helper grants `NET_ADMIN` and `NET_RAW`. Amass downloads address datasets on first use for actual operations; help and version commands skip those downloads.
 
----
+## Contributing
 
-## Safety
+Open an issue for bugs or feature requests, or submit a pull request with a description of the change. Follow [AGENTS.md](AGENTS.md) for repository conventions.
 
-- Only one subprocess gateway (`run_tool()` / `run_bash()` in `base.py`); long-lived daemons use `start_background()`.
-- `run_command` enforces an **allowlist** of safe binaries; destructive commands (`rm`, `dd`, `shutdown`, `mkfs`, interpreters, …) are rejected.
-- A denylist runs as defense-in-depth across chains, pipes, and substitutions.
-- Required arguments are validated, and every tool has a timeout (30s–900s).
-- Optional token auth rejects unauthorized requests.
+New tool wrappers belong in the appropriate module under `src/kali_mcp/tools/`. Register each schema in its module's `TOOLS` list and its handler in `DISPATCH`. Run subprocesses through the execution helpers in `tools/base.py`.
 
----
+## Responsible use
 
-## Disclaimer
-
-This tool is intended for authorized security testing and educational purposes only.
-Users are responsible for complying with all applicable laws and regulations.
-Unauthorized use of security tools against systems you do not own or have explicit
-permission to test is illegal.
+Use Kali MCP only on systems you own or have explicit permission to assess. Users are responsible for complying with applicable laws and regulations.
 
 ## License
 
-MIT
+Licensed under the [MIT License](LICENSE).
