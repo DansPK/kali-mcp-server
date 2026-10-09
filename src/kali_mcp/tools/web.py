@@ -1,5 +1,10 @@
 from mcp.types import Tool
 import shlex
+import json
+import os
+from pathlib import Path
+import tempfile
+from urllib.parse import urlsplit
 from ..tools.base import run_tool, require_target
 
 TOOLS = [
@@ -231,7 +236,49 @@ TOOLS.extend([
     ),
 ])
 
+_HEADERS_SCHEMA = {"type": "object", "additionalProperties": {"type": "string"}, "description": "HTTP headers, including Authorization or Cookie, for the target"}
+_URL_SCHEMA = {"type": "string", "description": "Absolute HTTP(S) target URL"}
+_TIMEOUT_SCHEMA = {"type": "integer", "minimum": 1, "maximum": 600, "description": "Total execution timeout in seconds (default: 300)"}
+
+TOOLS.extend([
+    Tool(name="katana", description="Discover web endpoints and JavaScript URLs. Optional headless Chromium crawling captures browser XHR requests. Returns JSON lines. Scope defaults to the target hostname.", inputSchema={
+        "type": "object", "properties": {
+            "url": _URL_SCHEMA,
+            "depth": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Maximum crawl depth (default: 3)"},
+            "headless": {"type": "boolean", "description": "Render JavaScript with Chromium (default: false)"},
+            "headers": _HEADERS_SCHEMA,
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Requests per second (default: 5)"},
+            "timeout": _TIMEOUT_SCHEMA,
+            "opts": {"type": "string", "description": "Additional Katana options; quoted values supported"},
+        }, "required": ["url"]}),
+    Tool(name="arjun", description="Discover hidden HTTP parameters in GET, POST, JSON, or XML requests. Supports authenticated headers and a local wordlist. Returns a JSON report.", inputSchema={
+        "type": "object", "properties": {
+            "url": _URL_SCHEMA,
+            "method": {"type": "string", "enum": ["GET", "POST", "JSON", "XML"], "description": "Parameter location/method (default: GET)"},
+            "headers": _HEADERS_SCHEMA,
+            "wordlist": {"type": "string", "description": "Optional existing local parameter wordlist"},
+            "delay": {"type": "number", "minimum": 0, "description": "Delay between requests in seconds (default: 0.2)"},
+            "timeout": _TIMEOUT_SCHEMA,
+            "opts": {"type": "string", "description": "Additional Arjun options; quoted values supported"},
+        }, "required": ["url"]}),
+    Tool(name="dalfox", description="Scan an HTTP(S) URL for XSS with Dalfox 3. Supports headers, cookies, request bodies, and selected parameters. Returns JSON including findings, evidence, and scan-completeness metadata.", inputSchema={
+        "type": "object", "properties": {
+            "url": _URL_SCHEMA,
+            "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "HTTP method (default: GET)"},
+            "headers": _HEADERS_SCHEMA,
+            "body": {"type": "string", "description": "Optional raw request body"},
+            "parameters": {"type": "array", "items": {"type": "string"}, "description": "Optional parameter names to test"},
+            "delay": {"type": "integer", "minimum": 0, "description": "Delay between requests in milliseconds (default: 200)"},
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Global requests per second (default: 5)"},
+            "timeout": _TIMEOUT_SCHEMA,
+            "opts": {"type": "string", "description": "Additional Dalfox 3 scan options; quoted values supported"},
+        }, "required": ["url"]}),
+])
+
 DISPATCH = {
+    "katana": lambda **kw: katana(**kw),
+    "arjun": lambda **kw: arjun(**kw),
+    "dalfox": lambda **kw: dalfox(**kw),
     "httpx_probe": lambda **kw: httpx_probe(**kw),
     "testssl": lambda **kw: testssl(**kw),
     "sqlmap": lambda **kw: sqlmap(**kw),
@@ -246,6 +293,105 @@ DISPATCH = {
     "xsser": lambda **kw: xsser(**kw),
     "commix": lambda **kw: commix(**kw),
 }
+
+
+def _validate_web_request(url: str, headers: dict | None, timeout: int) -> str | None:
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return "[error] url must be an absolute HTTP(S) URL"
+        if not 1 <= timeout <= 600:
+            return "[error] timeout must be between 1 and 600 seconds"
+        for key, value in (headers or {}).items():
+            if not isinstance(key, str) or not isinstance(value, str) or any(c in key + value for c in "\r\n"):
+                return "[error] headers must contain string names/values without newlines"
+    except (TypeError, ValueError, AttributeError):
+        return "[error] invalid URL, headers, or timeout"
+    return None
+
+
+def katana(url: str, depth: int = 3, headless: bool = False, headers: dict | None = None,
+           rate_limit: int = 5, timeout: int = 300, opts: str = "") -> str:
+    error = _validate_web_request(url, headers, timeout)
+    if error:
+        return error
+    if not 1 <= depth <= 20 or not 1 <= rate_limit <= 1000:
+        return "[error] depth must be 1–20 and rate_limit must be 1–1000"
+    command = ["katana", "-u", url, "-d", str(depth), "-jc", "-fs", "fqdn", "-rl", str(rate_limit),
+               "-ct", f"{timeout}s", "-duc"]
+    for key, value in (headers or {}).items():
+        command.extend(["-H", f"{key}: {value}"])
+    if headless:
+        command.extend(["-headless", "-system-chrome", "-xhr"])
+        if Path("/usr/bin/chromium").is_file():
+            command.extend(["-system-chrome-path", "/usr/bin/chromium"])
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            command.append("-no-sandbox")
+    command.extend([*shlex.split(opts), "-jsonl", "-silent", "-omit-raw", "-omit-body"])
+    return run_tool(command, timeout=timeout + 15)
+
+
+def arjun(url: str, method: str = "GET", headers: dict | None = None, wordlist: str = "",
+          delay: float = 0.2, timeout: int = 300, opts: str = "") -> str:
+    error = _validate_web_request(url, headers, timeout)
+    if error:
+        return error
+    method = method.upper()
+    if method not in ("GET", "POST", "JSON", "XML") or delay < 0:
+        return "[error] invalid method or negative delay"
+    if wordlist and not Path(wordlist).is_file():
+        return "[error] wordlist must be an existing local file"
+    with tempfile.TemporaryDirectory(prefix="kali-arjun-") as location:
+        report = Path(location) / "report.json"
+        command = ["arjun", "-u", url, "-m", method, "-d", str(delay), "-t", "1", "-T", "15"]
+        if headers:
+            command.extend(["--headers", "\n".join(f"{key}: {value}" for key, value in headers.items())])
+        if wordlist:
+            command.extend(["-w", str(Path(wordlist).resolve())])
+        command.extend([*shlex.split(opts), "-oJ", str(report)])
+        output = run_tool(command, timeout=timeout)
+        if output.startswith("[error]"):
+            return output
+        if report.is_file():
+            return report.read_text()
+        if "no parameters" in output.lower():
+            return "{}"
+        return f"[error] Arjun did not produce a JSON report\n{output}"
+
+
+def dalfox(url: str, method: str = "GET", headers: dict | None = None, body: str = "",
+           parameters: list[str] | None = None, delay: int = 200, timeout: int = 300, opts: str = "",
+           rate_limit: int = 5) -> str:
+    error = _validate_web_request(url, headers, timeout)
+    if error:
+        return error
+    method = method.upper()
+    if method not in ("GET", "POST", "PUT", "PATCH", "DELETE") or delay < 0 or not 1 <= rate_limit <= 1000:
+        return "[error] invalid method, delay, or rate_limit"
+    if parameters and any(not isinstance(item, str) or not item.strip() for item in parameters):
+        return "[error] parameters must contain nonempty names"
+    command = ["dalfox", "scan", url, "-X", method, "--delay", str(delay), "--rate-limit", str(rate_limit),
+               "--scan-timeout", str(timeout), "--workers", "4", "--no-color"]
+    for key, value in (headers or {}).items():
+        command.extend(["-H", f"{key}: {value}"])
+    if body:
+        command.extend(["-d", body])
+    if parameters:
+        for parameter in parameters:
+            command.extend(["-p", parameter])
+    command.extend([*shlex.split(opts), "-f", "json"])
+    output = run_tool(command, timeout=timeout)
+    # Dalfox 3 uses exit 1 for findings, not just execution failures. Promote
+    # only a complete, valid findings report; keep actual errors as MCP errors.
+    prefix = "[error] command exited with code 1\n"
+    if output.startswith(prefix):
+        try:
+            report, _ = json.JSONDecoder().raw_decode(output[len(prefix):].lstrip())
+            if report.get("findings") and report.get("meta", {}).get("incomplete") is False:
+                return json.dumps(report)
+        except (ValueError, AttributeError):
+            pass
+    return output
 
 
 def sqlmap(url: str, opts: str = "--batch --random-agent") -> str:

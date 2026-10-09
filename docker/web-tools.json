@@ -1,0 +1,12 @@
+{
+  "katana": {
+    "version": "1.8.0",
+    "url": "https://github.com/projectdiscovery/katana/releases/download/v1.8.0/katana_1.8.0_linux_amd64.zip",
+    "sha256": "cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2"
+  },
+  "dalfox": {
+    "version": "3.2.4",
+    "url": "https://github.com/hahwul/dalfox/releases/download/v3.2.4/dalfox-v3.2.4-linux-x86_64-musl.tar.gz",
+    "sha256": "c11cfd2f8261973f0a2a2a1eba5a147ce77712a29acfa6343f9847fb8bb7eca2"
+  }
+}

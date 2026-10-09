@@ -1,7 +1,5 @@
 FROM kalilinux/kali-last-release@sha256:3ea545e38849417fc933514e117014b98aa42fd87d239177fa4c9874dcb73d5f
 
-LABEL description="AMD64 Kali MCP worker — 75 security tools"
-
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
     PATH=/opt/kali-mcp/bin:/opt/kali-scanners/bin:/usr/lib/jvm/java-21-openjdk-amd64/bin:$PATH \
     XDG_CACHE_HOME=/root/.cache \
@@ -37,6 +35,13 @@ RUN python3 -m venv /opt/kali-scanners && \
     npm list --global --depth=0 > /opt/kali-versions/npm.txt && \
     npm cache clean --force
 
+COPY docker/web-tools.json docker/install-web-tools.py /tmp/
+RUN apt-get -o Acquire::Retries=3 update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium chromium-driver && \
+    dpkg-query -W -f='${Package}\t${Version}\n' > /opt/kali-versions/apt.txt && \
+    rm -rf /var/lib/apt/lists/* && \
+    python3 /tmp/install-web-tools.py
+
 # Keep apt-managed Python launchers on the system interpreter. The venv CLI
 # scripts use their own absolute shebangs; `python` still resolves to the server.
 ENV PATH=/usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kali-mcp/bin:/opt/kali-scanners/bin
@@ -50,3 +55,5 @@ RUN python3 -m venv /opt/kali-mcp && \
     /opt/kali-mcp/bin/pip freeze > /opt/kali-versions/server.txt
 
 ENTRYPOINT ["python", "-m", "kali_mcp.server"]
+
+LABEL description="AMD64 Kali MCP worker — 81 security tools with browser crawling"

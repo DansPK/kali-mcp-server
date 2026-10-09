@@ -1,6 +1,6 @@
 # Kali MCP
 
-Kali MCP exposes **75 security tools** to AI applications through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). It supports network and web scanning, source-code analysis, API testing, forensics, and OWASP ZAP workflows.
+Kali MCP exposes **81 security tools** to AI applications through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). It supports network and web scanning, source-code analysis, API testing, forensics, and OWASP ZAP workflows.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -23,7 +23,7 @@ Kali MCP exposes **75 security tools** to AI applications through the [Model Con
 
 ## Features
 
-- 75 MCP tools across 13 categories.
+- 81 MCP tools across 13 categories.
 - Stdio, Streamable HTTP, and legacy SSE transports.
 - Optional token authentication and HTTPS support.
 - Subprocess timeouts, argument validation, and command restrictions for the shell fallback.
@@ -211,7 +211,7 @@ Missing or incorrect tokens return MCP error code `-32001`. Without a configured
 | `KALI_ZAP_HOST` | `127.0.0.1` | ZAP daemon address |
 | `KALI_ZAP_PORT` | `8090` | ZAP daemon port |
 
-ZAP starts automatically when needed and is reused across calls. Use `zap_stop` to shut it down. The Docker image includes ZAP and Java 21.
+ZAP starts automatically when needed and is reused across calls. Use `zap_stop` to shut it down. The Docker image includes ZAP, Java 21, Chromium, and its matching driver.
 
 ## Available tools
 
@@ -220,10 +220,10 @@ See [TOOLS.md](TOOLS.md) for the complete tool reference.
 | Category | Tools |
 |---|---|
 | Network | nmap, masscan, netcat, tcpdump, arp_scan, onesixtyone, dnsrecon, tshark, naabu |
-| Web | sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix, httpx_probe, testssl |
+| Web | sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix, httpx_probe, testssl, katana, arjun, dalfox |
 | Source | semgrep, gitleaks, trivy |
 | API | schemathesis, newman |
-| OWASP ZAP | zap_start, zap_stop, zap_status, zap_spider, zap_active_scan, zap_scan, zap_alerts, zap_report |
+| OWASP ZAP | zap_start, zap_stop, zap_status, zap_spider, zap_active_scan, zap_scan, zap_alerts, zap_report, zap_context, zap_openapi_import, zap_ajax_spider |
 | Password | hydra, john, hashcat, crunch |
 | Recon | enum4linux, searchsploit, subfinder, amass, exiftool, theHarvester, smbclient |
 | Metasploit | msfconsole, msfvenom, msfdb, msf_search, msf_info, msf_resource |
@@ -245,6 +245,67 @@ docker run --rm -i --platform linux/amd64 \
 For example, call `semgrep` with `{"path":"/workspace"}`. Files referenced by tool arguments must exist in the server's filesystem.
 
 Volatility uses the Volatility 3 `vol` CLI with namespaced plugins such as `windows.pslist`. Mimikatz lists packaged Windows resources; execution requires Windows. Physical wireless devices, GPUs, and Windows/AD workflows require additional environment-specific setup.
+
+### Web and API workflows
+
+Start with `katana` to discover URLs and browser XHR endpoints, use `arjun` to find hidden parameters, then pass selected URLs to `dalfox`, `nuclei`, or other targeted scanners. `headers` accepts an object containing target authentication headers. Katana and Dalfox default to five requests per second; Arjun uses a single worker and a 0.2-second delay. `opts` supports advanced CLI settings.
+
+Example MCP tool arguments:
+
+```json
+{
+  "url": "http://app.example.test",
+  "headless": true,
+  "depth": 3,
+  "headers": {"Authorization": "Bearer target-token"},
+  "rate_limit": 5,
+  "timeout": 300
+}
+```
+
+Call `katana` with the object above. Its JSON lines omit raw request/response bodies. Call `arjun` with `url`, optional `method` (`GET`, `POST`, `JSON`, or `XML`), and an optional local parameter wordlist. Call `dalfox` with `url`, optional `parameters`, `headers`, and `body`; its JSON report preserves finding confidence and scan-completeness metadata. Complete Dalfox findings are successful MCP results; execution failures remain errors.
+
+For API regression and stateful testing, call `schemathesis`:
+
+```json
+{
+  "schema": "/workspace/openapi.json",
+  "base_url": "http://api.example.test",
+  "headers": {"Authorization": "Bearer target-token"},
+  "include_methods": ["GET", "POST"],
+  "phases": ["examples", "fuzzing", "stateful"],
+  "max_examples": 50,
+  "seed": 42,
+  "report_dir": "/workspace/reports",
+  "rate_limit": "5/s",
+  "timeout": 600
+}
+```
+
+`report_dir` receives JSON verdicts, HAR request recordings, and JUnit reports. Mount a writable report directory when using Docker. `include_paths` selects exact OpenAPI paths; `basic_auth` and `checks` are also available. Existing `schema`/`opts` calls remain supported. Schemathesis assertion failures return MCP errors with the report paths.
+
+For ZAP, create a `zap_context` with a unique name, target base URL, optional excluded URL regexes, and authentication settings. Use its returned `context_id` and `user_id` with `zap_spider`, `zap_active_scan`, or `zap_scan`. Authentication method and credential parameters follow the installed ZAP API, for example:
+
+```json
+{
+  "name": "staging-user",
+  "url": "http://app.example.test",
+  "exclude": [".*/logout.*"],
+  "authentication_method": "jsonBasedAuthentication",
+  "authentication_params": {
+    "loginUrl": "http://app.example.test/login",
+    "loginRequestData": "{\"username\":\"{%username%}\",\"password\":\"{%password%}\"}"
+  },
+  "user_name": "scanner",
+  "credentials": {"username": "scanner", "password": "target-password"},
+  "logged_in_regex": "Welcome",
+  "logged_out_regex": "Please login"
+}
+```
+
+Use `zap_openapi_import` to import an API definition from a URL or local file, with optional `base_url`, `context_id`, and `user_id`. For JavaScript-rendered pages, use `zap_ajax_spider` with optional `context_name` and `user_name`. AJAX crawling returns endpoint summaries for the target subtree, runs one crawl per daemon, and stops on timeout. ZAP keeps authentication contexts until its daemon is stopped.
+
+The image pins Katana 1.8.0, Dalfox 3.2.4, and Arjun 2.2.7. Upstream binary archives are verified against SHA-256 checksums; versions are recorded under `/opt/kali-versions/`.
 
 ## Project structure
 

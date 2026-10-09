@@ -1,6 +1,6 @@
 # Kali MCP Tools
 
-75 security tools exposed via MCP for AI-assisted security testing.
+81 security tools exposed via MCP for AI-assisted security testing.
 
 ---
 
@@ -18,7 +18,7 @@
 | `tshark` | CLI Wireshark — capture and analyze traffic with display filters |
 | `naabu` | TCP port discovery; JSON lines, connect scans by default |
 
-## Web (13)
+## Web (16)
 
 | Tool | Description |
 |---|---|
@@ -35,6 +35,9 @@
 | `commix` | Automated command injection exploitation |
 | `httpx_probe` | HTTP status/title/server probing with ProjectDiscovery httpx-toolkit |
 | `testssl` | TLS protocols, ciphers, certificates, and vulnerabilities |
+| `katana` | Scoped endpoint/JavaScript discovery; optional headless Chromium and XHR extraction; JSON lines |
+| `arjun` | Hidden GET/POST/JSON/XML parameters; authenticated headers and local wordlists; JSON |
+| `dalfox` | Dalfox 3 XSS scans with headers, bodies, selected parameters, and JSON finding/completeness metadata |
 
 ## Source (3)
 
@@ -48,12 +51,12 @@
 
 | Tool | Description |
 |---|---|
-| `schemathesis` | OpenAPI/GraphQL generated tests; `schema` URL/file, `opts` (local schema needs `--url`) |
+| `schemathesis` | OpenAPI/GraphQL tests; explicit base URL/auth, path/method filters, phases, checks, seeds, pacing, and JSON/HAR/JUnit reports |
 | `newman` | Postman regression tests; `collection` file, optional `environment` file and `opts` |
 
 Failed API checks return MCP errors with the tool's test report. Web/network additions accept `target` and `opts`; Naabu also accepts `ports`. Source/collection files must exist inside the container.
 
-## OWASP ZAP — Web App Scanning (8)
+## OWASP ZAP — Web App Scanning (11)
 
 | Tool | Description |
 |---|---|
@@ -65,6 +68,11 @@ Failed API checks return MCP errors with the tool's test report. Web/network add
 | `zap_scan` | Full scan in one call: spider + passive wait + active scan + alerts |
 | `zap_alerts` | List findings, filterable by base URL and risk level |
 | `zap_report` | Generate an HTML/MD/SARIF report of the findings |
+| `zap_context` | Create a scoped context, configure authentication, and enable a user; returns context/user IDs |
+| `zap_openapi_import` | Import OpenAPI from URL/file with target override and optional context/user |
+| `zap_ajax_spider` | Headless Chromium crawling with context/user names; scoped endpoint summaries and timeout cancellation |
+
+Existing `zap_spider`, `zap_active_scan`, and `zap_scan` accept `context_id` and `user_id` for authenticated operation. `zap_ajax_spider` uses `context_name` and `user_name`. See the [README workflows](README.md#web-and-api-workflows) for argument examples.
 
 ## Password (4)
 
@@ -150,4 +158,4 @@ Failed API checks return MCP errors with the tool's test report. Web/network add
 
 ---
 
-**Total: 75 tools**
+**Total: 81 tools**

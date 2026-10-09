@@ -19,7 +19,7 @@ src/kali_mcp/
 └── tools/
     ├── base.py        # run_tool() — safe subprocess executor; start_background() for daemons
     ├── network.py     # nmap, masscan, netcat, tcpdump, arp-scan, onesixtyone, dnsrecon, tshark
-    ├── web.py         # sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix
+    ├── web.py         # sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix, katana, arjun, dalfox
     ├── source.py      # semgrep, gitleaks, trivy
     ├── api.py         # schemathesis, newman
     ├── password.py    # hydra, john, hashcat, crunch
@@ -29,7 +29,7 @@ src/kali_mcp/
     ├── forensics.py   # binwalk, volatility, foremost, steghide
     ├── post_exploit.py # crackmapexec, evil-winrm, chisel
     ├── misc.py        # aircrack-ng, responder, impacket, mimikatz, bettercap, hash-identifier, cewl, proxychains, wifite, reaver
-    └── zap.py         # OWASP ZAP daemon REST API: spider, active scan, alerts, reports
+    └── zap.py         # OWASP ZAP daemon REST API: contexts, OpenAPI import, browser/spider/active scans, alerts, reports
 ```
 
 ## Conventions
