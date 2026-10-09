@@ -127,6 +127,24 @@ curl -s -X POST http://127.0.0.1:8080/mcp \
 | `--ssl-certfile` | `KALI_MCP_SSL_CERTFILE` | *(empty)* | PEM certificate for HTTPS |
 | `--ssl-keyfile` | `KALI_MCP_SSL_KEYFILE` | *(empty)* | PEM private key for HTTPS |
 
+### Response framing / large results
+
+Over Streamable HTTP the server replies to request/response calls with
+`Content-Type: application/json`, **not** an SSE frame. This matters because
+clients built on httpx-sse / httpx2 cap a single SSE event at 1 MiB
+(`DEFAULT_MAX_EVENT_SIZE_BYTES = 1048576`); a tool result bigger than that
+aborts the call with `-32000 "...exceeded the 1048576 byte limit"`. A JSON
+reply has no per-event cap, so arbitrarily large results (e.g.
+`nuclei -jsonl`) are delivered intact. SSE is reserved for
+progress/notifications, which this server does not emit. The legacy `/sse`
+transport is inherently event-framed, so prefer Streamable HTTP for large
+results.
+
+| Env var | Default | Description |
+|---|---|---|
+| `KALI_MCP_JSON_RESPONSE` | `true` | Return request responses as `application/json` (avoids the SSE 1 MiB cap). Set `false` only for SSE-only clients. |
+| `KALI_MCP_MAX_RESULT_BYTES` | `0` (unlimited) | Optional safety net: cap a single tool result. On overflow the leading bytes are returned with a `…[truncated: N of M bytes]` marker and the full output is written to a file on the server. |
+
 ### ZAP-specific
 
 | Env var | Default | Description |
@@ -322,6 +340,13 @@ Each tool module exports a `TOOLS` list and a `DISPATCH` dict; `tools/__init__.p
 ```bash
 # Smoke-test the locally installed server (calls a sample of tools + auth)
 python test_server.py
+
+# Verify a >1 MiB tool result is delivered over Streamable HTTP, plus the
+# SSE 1 MiB cap root cause and the opt-in truncation safety net
+python test_large_result.py
+#   [1] root cause confirmed: SSE event cap = 1048576 bytes ...
+#   [2] fix: received 2000000 bytes over Streamable HTTP; full=True
+#   [3] safety net: truncation marker present=True
 ```
 
 ### Container install test

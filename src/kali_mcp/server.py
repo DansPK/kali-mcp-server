@@ -5,6 +5,7 @@ import functools
 import hmac
 import os
 import sys
+import tempfile
 import urllib.parse
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -27,6 +28,46 @@ _AUTH_HEADER_OK: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "kali_mcp_auth_header_ok", default=False
 )
 
+# Return request responses as plain application/json instead of SSE frames.
+# A single SSE event is capped at 1 MiB by common clients (httpx-sse /
+# httpx2 DEFAULT_MAX_EVENT_SIZE_BYTES), which aborts large tool results with
+# -32000; a JSON reply has no such per-event limit. SSE is only needed when the
+# server streams progress/notifications, which this server does not. Set
+# KALI_MCP_JSON_RESPONSE=false only for SSE-only clients.
+JSON_RESPONSE = os.environ.get("KALI_MCP_JSON_RESPONSE", "true").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+
+# Optional safety net: cap the size of a single tool result (bytes). 0 = no
+# limit (default) so arbitrarily large results are delivered verbatim. When
+# set, an oversized result keeps the leading bytes plus a truncation marker and
+# the full output is written to a file on the server — never silently dropped.
+try:
+    MAX_RESULT_BYTES = int(os.environ.get("KALI_MCP_MAX_RESULT_BYTES", "0"))
+except ValueError:
+    MAX_RESULT_BYTES = 0
+
+
+def _limit_result(text: str) -> str:
+    """Apply the optional result-size cap (see MAX_RESULT_BYTES)."""
+    if MAX_RESULT_BYTES <= 0:
+        return text
+    data = text.encode("utf-8", "replace")
+    if len(data) <= MAX_RESULT_BYTES:
+        return text
+    try:
+        fd, location = tempfile.mkstemp(prefix="kali-mcp-result-", suffix=".txt")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+    except Exception:
+        location = "<unable to write overflow file>"
+    head = data[:MAX_RESULT_BYTES].decode("utf-8", "ignore")
+    return (
+        f"{head}\n\n"
+        f"…[truncated: {MAX_RESULT_BYTES} of {len(data)} bytes shown; "
+        f"full output written to {location}]"
+    )
+
 
 async def handle_list_tools(ctx, _req: ListToolsRequest) -> ListToolsResult:
     return ListToolsResult(tools=ALL_TOOLS)
@@ -43,7 +84,7 @@ async def handle_call_tool(ctx, req: CallToolRequestParams) -> CallToolResult:
     args = req.arguments or {}
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, functools.partial(handler, **args))
-    return CallToolResult(content=[TextContent(type="text", text=str(result))])
+    return CallToolResult(content=[TextContent(type="text", text=_limit_result(str(result)))])
 
 
 def register_handlers() -> None:
@@ -308,7 +349,9 @@ async def _run_streamable_http_server(host: str, port: int, ssl_certfile: str, s
 
     session_manager = StreamableHTTPSessionManager(
         app=server,
-        json_response=False,
+        # JSON replies avoid the client's per-SSE-event size cap (1 MiB) that
+        # otherwise aborts large tool results with -32000. See JSON_RESPONSE.
+        json_response=JSON_RESPONSE,
         stateless=True,  # stateless: no session persistence, fresh transport per request
     )
 

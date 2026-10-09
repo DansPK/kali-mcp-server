@@ -39,5 +39,6 @@ src/kali_mcp/
 - Tool names use `snake_case` for function names but the MCP `Tool.name` is the snake_case key in TOOL_DISPATCH.
 - Add new tools by: (1) creating the function in the appropriate tools/ module, (2) adding a `Tool(...)` to that module's `TOOLS` list and an entry in its `DISPATCH` dict. `tools/__init__.py` merges every module into `ALL_TOOLS` / `TOOL_DISPATCH`.
 - `zap_*` tools need `zaproxy` + a Java 17/21 LTS JVM (ZAP 2.17 hangs on Java 25); the daemon is auto-started via `start_background()` and driven over its REST API.
+- Streamable-HTTP uses `json_response=True` (`KALI_MCP_JSON_RESPONSE`) so tool results return as `application/json`; SSE frames have a 1 MiB per-event cap in httpx-sse/httpx2 clients that aborts large results with -32000. Optional `KALI_MCP_MAX_RESULT_BYTES` caps a single result (marker + overflow file), 0 = unlimited.
 - Timeout defaults: most tools 120–300s, password cracking 600s, packet capture 60s.
 - `BLOCKED_COMMANDS` set in `base.py` prevents dangerous shell commands from being executed.
