@@ -9,6 +9,7 @@ Kali MCP — an MCP server exposing popular Kali Linux security tools to AI appl
 - Docker: `docker build -t kali-mcp:latest .` then `docker run --rm -i kali-mcp:latest`
 - Compose: `docker compose run --rm kali-mcp`
 - Run with auth: `KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server`
+- Run over HTTP (env-driven): `KALI_MCP_TRANSPORT=http KALI_MCP_URL=http://HOST:PORT/mcp KALI_MCP_AUTH_TOKEN=secret123 python -m kali_mcp.server` — `http`/`https` alias `streamable-http`; `KALI_MCP_URL` supplies bind host/port.
 - Auth: set `KALI_MCP_AUTH_TOKEN` env var or `--auth-token=...` flag. Client passes token via `_meta.auth_token` on each request, or via `Authorization: Bearer <token>` / `X-Auth-Token` headers on SSE/HTTP transports. Unauthorized requests return error code -32001.
 
 ## Architecture

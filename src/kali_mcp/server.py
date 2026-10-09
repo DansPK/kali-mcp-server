@@ -5,6 +5,7 @@ import functools
 import hmac
 import os
 import sys
+import urllib.parse
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import McpError
@@ -149,28 +150,63 @@ class HeaderAuthMiddleware:
         await self.app(scope, receive, send)
 
 
+# Friendly aliases accepted for --transport / KALI_MCP_TRANSPORT.
+_TRANSPORT_ALIASES = {
+    "http": "streamable-http",
+    "https": "streamable-http",
+    "streamable_http": "streamable-http",
+    "streamablehttp": "streamable-http",
+    "streamable": "streamable-http",
+}
+
+
+def _normalize_transport(value: str) -> str:
+    v = (value or "stdio").strip().lower()
+    return _TRANSPORT_ALIASES.get(v, v)
+
+
+def _split_url(url: str) -> tuple[str, int]:
+    """Return (host, port) from a URL, tolerant of a missing scheme."""
+    if not url:
+        return "", 0
+    parsed = urllib.parse.urlparse(url if "://" in url else "http://" + url)
+    return parsed.hostname or "", parsed.port or 0
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse command-line arguments with environment variable fallbacks."""
     parser = argparse.ArgumentParser(
         prog="kali-mcp",
         description="Kali MCP Server — expose Kali Linux security tools via Model Context Protocol",
     )
+
+    # KALI_MCP_URL supplies the bind host/port when the more specific
+    # KALI_MCP_HOST / KALI_MCP_PORT are not set.
+    url_host, url_port = _split_url(os.environ.get("KALI_MCP_URL", ""))
+
     parser.add_argument(
         "--host", "-H",
-        default=os.environ.get("KALI_MCP_HOST", "127.0.0.1"),
-        help="Listening IP address (default: 127.0.0.1). Env: KALI_MCP_HOST",
+        default=os.environ.get("KALI_MCP_HOST", url_host or "127.0.0.1"),
+        help="Listening IP address (default: 127.0.0.1). Env: KALI_MCP_HOST, else KALI_MCP_URL host",
     )
     parser.add_argument(
         "--port", "-p",
         type=int,
-        default=int(os.environ.get("KALI_MCP_PORT", "8080")),
-        help="Listening port (default: 8080). Env: KALI_MCP_PORT",
+        default=int(os.environ.get("KALI_MCP_PORT", url_port or 8080)),
+        help="Listening port (default: 8080). Env: KALI_MCP_PORT, else KALI_MCP_URL port",
+    )
+    parser.add_argument(
+        "--url", "-u",
+        default="",
+        help="Base URL whose host/port override --host/--port "
+             "(e.g. http://192.168.1.5:8080/mcp). Env: KALI_MCP_URL",
     )
     parser.add_argument(
         "--transport", "-t",
-        choices=["stdio", "sse", "streamable-http"],
+        choices=["stdio", "sse", "streamable-http", "http", "https"],
         default=os.environ.get("KALI_MCP_TRANSPORT", "stdio"),
-        help="Transport protocol (default: stdio). Env: KALI_MCP_TRANSPORT",
+        help="Transport protocol: stdio, sse, streamable-http (aliases: http, https). "
+             "Env: KALI_MCP_TRANSPORT",
     )
     parser.add_argument(
         "--ssl-certfile",
@@ -187,7 +223,22 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("KALI_MCP_AUTH_TOKEN", ""),
         help="Authentication token required by clients. Env: KALI_MCP_AUTH_TOKEN",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    args.transport = _normalize_transport(args.transport)
+    # An explicit URL (env KALI_MCP_URL is applied via defaults; the flag wins)
+    # overrides host/port.
+    if args.url:
+        url_host, url_port = _split_url(args.url)
+        if url_host:
+            args.host = url_host
+        if url_port:
+            args.port = url_port
+
+    if args.transport not in ("stdio", "sse", "streamable-http"):
+        parser.error(f"invalid transport: {args.transport}")
+
+    return args
 
 
 async def _run_stdio_server() -> None:
@@ -222,6 +273,9 @@ async def _run_sse_server(host: str, port: int, ssl_certfile: str, ssl_keyfile: 
                 write_stream,
                 server.create_initialization_options(),
             )
+        # connect_sse already streamed the response; return an empty one so
+        # Starlette doesn't try to serialize a None return value.
+        return Response()
 
     app = Starlette(
         debug=False,
@@ -249,7 +303,7 @@ async def _run_streamable_http_server(host: str, port: int, ssl_certfile: str, s
     """Run the MCP server over Streamable HTTP."""
     from contextlib import asynccontextmanager
     from starlette.applications import Starlette
-    from starlette.routing import Route, Mount
+    from starlette.routing import Mount
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
     session_manager = StreamableHTTPSessionManager(
@@ -263,16 +317,16 @@ async def _run_streamable_http_server(host: str, port: int, ssl_certfile: str, s
         async with session_manager.run():
             yield
 
-    async def handle_http(request):
-        await session_manager.handle_request(
-            request.scope, request.receive, request._send
-        )
-
     app = Starlette(
         debug=False,
         lifespan=lifespan,
         routes=[
-            Route("/mcp", endpoint=handle_http, methods=["GET", "POST", "DELETE"]),
+            # Mount the session manager's ASGI app directly. It writes the
+            # response itself and returns None, so it must not be used as a
+            # Route endpoint (Starlette would treat None as a Response and
+            # raise TypeError). Root-mount (rather than "/mcp") so that a
+            # request to "/mcp" is not 307-redirected to "/mcp/".
+            Mount("", app=session_manager.handle_request),
         ],
     )
     app = HeaderAuthMiddleware(app)

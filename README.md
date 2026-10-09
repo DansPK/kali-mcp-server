@@ -82,6 +82,15 @@ python -m kali_mcp.server -t streamable-http -H 0.0.0.0 -p 8443 \
   --auth-token secret123 --ssl-certfile cert.pem --ssl-keyfile key.pem
 ```
 
+Or configure entirely from the environment:
+
+```bash
+export KALI_MCP_TRANSPORT=http
+export KALI_MCP_URL=http://192.168.1.5:8080/mcp
+export KALI_MCP_AUTH_TOKEN=secret123
+python -m kali_mcp.server
+```
+
 Verify it is up:
 
 ```bash
@@ -112,7 +121,8 @@ curl -s -X POST http://127.0.0.1:8080/mcp \
 |---|---|---|---|
 | `--host`, `-H` | `KALI_MCP_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for all interfaces) |
 | `--port`, `-p` | `KALI_MCP_PORT` | `8080` | Listening port |
-| `--transport`, `-t` | `KALI_MCP_TRANSPORT` | `stdio` | `stdio` \| `sse` \| `streamable-http` |
+| `--url` | `KALI_MCP_URL` | *(empty)* | Bind host/port derived from this URL (e.g. `http://192.168.1.5:8080/mcp`); the flag overrides `--host`/`--port` |
+| `--transport`, `-t` | `KALI_MCP_TRANSPORT` | `stdio` | `stdio` \| `sse` \| `streamable-http` (aliases: `http`, `https` → `streamable-http`) |
 | `--auth-token` | `KALI_MCP_AUTH_TOKEN` | *(empty)* | Require this token on every request |
 | `--ssl-certfile` | `KALI_MCP_SSL_CERTFILE` | *(empty)* | PEM certificate for HTTPS |
 | `--ssl-keyfile` | `KALI_MCP_SSL_KEYFILE` | *(empty)* | PEM private key for HTTPS |
