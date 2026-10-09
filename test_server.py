@@ -81,11 +81,11 @@ async def test_auth():
                     return False
 
             # With token — should be accepted
-            from mcp.types import ListToolsRequest
+            from mcp.types import ListToolsRequest, ListToolsResult
             req = ListToolsRequest.model_validate(
                 {"method": "tools/list", "params": {"_meta": {"auth_token": "test123"}}}
             )
-            result = await session.send_request(req, ListToolsRequest)
+            result = await session.send_request(req, ListToolsResult)
             tools = result.tools
             print(f"  OK: with-token request returned {len(tools)} tools")
             return True

@@ -78,13 +78,17 @@ async def handle_call_tool(ctx, req: CallToolRequestParams) -> CallToolResult:
     if not handler:
         return CallToolResult(
             content=[TextContent(type="text", text=f"[error] unknown tool: {req.name}")],
-            is_error=True,
+            isError=True,
         )
 
     args = req.arguments or {}
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, functools.partial(handler, **args))
-    return CallToolResult(content=[TextContent(type="text", text=_limit_result(str(result)))])
+    text = str(result)
+    return CallToolResult(
+        content=[TextContent(type="text", text=_limit_result(text))],
+        isError=text.startswith("[error]"),
+    )
 
 
 def register_handlers() -> None:
@@ -144,7 +148,9 @@ def register_auth_middleware() -> None:
             )
 
     async def authed_list(req):
-        _check(req)
+        # The SDK passes None when refreshing its internal tool-schema cache.
+        if req is not None:
+            _check(req)
         return await original_list(req)
 
     async def authed_call(req):

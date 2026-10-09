@@ -24,16 +24,15 @@ TOOLS = [
         description=(
             "Memory forensics framework for analyzing RAM dumps. Extracts running processes, network connections, "
             "loaded DLLs, registry hives, injected code, and malware artifacts from memory images. "
-            "Requires a memory profile matching the source OS version. "
+            "Uses Volatility 3 with automatically selected symbols; legacy Volatility 2 profiles are not supported. "
             "Output: structured forensic data — process trees, network sockets, registry keys, or flagged anomalies."
         ),
         inputSchema={
             "type": "object",
             "properties": {
-                "profile": {"type": "string", "description": "Memory profile matching the OS (e.g. 'Win7SP1x64', 'Win10x64_19041', 'Win2016x64')"},
                 "image": {"type": "string", "description": "Path to memory dump file (.raw, .vmem, .mem)"},
-                "plugin": {"type": "string", "description": "Plugin to run (e.g. pslist, pstree, netscan, malfind, cmdscan, hivelist, timeliner)"},
-                "opts": {"type": "string", "description": "Additional volatility options (e.g. '-p PID' to filter by process ID)"},
+                "plugin": {"type": "string", "description": "Volatility 3 plugin (e.g. windows.pslist, windows.netscan, linux.pslist)"},
+                "opts": {"type": "string", "description": "Global Volatility 3 options (e.g. --offline)"},
             },
             "required": ["image", "plugin"],
         },
@@ -96,12 +95,13 @@ def binwalk(filepath: str, opts: str = "-e") -> str:
     return run_tool(cmd, timeout=180)
 
 
-def volatility(profile: str, image: str, plugin: str, opts: str = "") -> str:
+def volatility(image: str, plugin: str, opts: str = "") -> str:
     if not image or not plugin:
         return "image and plugin are required"
-    cmd = ["volatility", "-f", image, "--profile", profile, plugin]
+    cmd = ["vol", "-f", image]
     if opts:
         cmd.extend(opts.split())
+    cmd.append(plugin)
     return run_tool(cmd, timeout=600)
 
 

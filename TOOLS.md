@@ -1,10 +1,10 @@
 # Kali MCP Tools
 
-67 security tools exposed via MCP for AI-assisted pentesting.
+75 security tools exposed via MCP for AI-assisted security testing.
 
 ---
 
-## Network (8)
+## Network (9)
 
 | Tool | Description |
 |---|---|
@@ -16,8 +16,9 @@
 | `onesixtyone` | Fast SNMP scanner and community string brute-force |
 | `dnsrecon` | DNS enumeration — zone transfers, brute-force, record discovery |
 | `tshark` | CLI Wireshark — capture and analyze traffic with display filters |
+| `naabu` | TCP port discovery; JSON lines, connect scans by default |
 
-## Web (11)
+## Web (13)
 
 | Tool | Description |
 |---|---|
@@ -32,6 +33,25 @@
 | `wfuzz` | Web application brute-forcer |
 | `xsser` | XSS scanner and exploitation framework |
 | `commix` | Automated command injection exploitation |
+| `httpx_probe` | HTTP status/title/server probing with ProjectDiscovery httpx-toolkit |
+| `testssl` | TLS protocols, ciphers, certificates, and vulnerabilities |
+
+## Source (3)
+
+| Tool | Description |
+|---|---|
+| `semgrep` | Local code security scans; `path`, optional `config` (default auto), `opts`; JSON findings |
+| `gitleaks` | Current directory files, not Git history; `path`, `opts`; redacted JSON secrets |
+| `trivy` | Dependency vulnerability scans; `path`, `opts`; JSON, online database with caching |
+
+## API (2)
+
+| Tool | Description |
+|---|---|
+| `schemathesis` | OpenAPI/GraphQL generated tests; `schema` URL/file, `opts` (local schema needs `--url`) |
+| `newman` | Postman regression tests; `collection` file, optional `environment` file and `opts` |
+
+Failed API checks return MCP errors with the tool's test report. Web/network additions accept `target` and `opts`; Naabu also accepts `ports`. Source/collection files must exist inside the container.
 
 ## OWASP ZAP — Web App Scanning (8)
 
@@ -93,7 +113,7 @@
 | Tool | Description |
 |---|---|
 | `binwalk` | Firmware analysis — scan and extract embedded files |
-| `volatility` | Memory forensics — analyze RAM dumps |
+| `volatility` | Volatility 3: `image`, namespaced `plugin`, `opts`; no legacy `profile` |
 | `foremost` | File carving — recover deleted files |
 | `steghide` | Steganography — embed/extract hidden data |
 
@@ -112,9 +132,9 @@
 | `aircrack_ng` | WiFi security — crack WEP/WPA/WPA2 |
 | `responder` | LLMNR/NBT-NS/mDNS poisoner — capture NTLMv2 hashes |
 | `impacket` | Network protocol tools — secretsdump, psexec, wmiexec |
-| `mimikatz` | Windows credential extraction from memory |
+| `mimikatz` | List packaged Windows resources; no native Linux execution |
 | `bettercap` | MITM attacks, network monitoring, manipulation |
-| `hash_identifier` | Identify hash algorithm types |
+| `hash_identifier` | Non-interactive hash identification using hashID |
 | `cewl` | Wordlist generation from website content |
 | `proxychains` | Proxy wrapper for any TCP connection |
 | `wifite` | Automated wireless attack tool |
@@ -126,8 +146,8 @@
 
 | Tool | Description |
 |---|---|
-| `run_command` | Execute arbitrary commands as a fallback when no dedicated tool is available |
+| `run_command` | Execute allowlisted shell commands as a fallback when no dedicated tool is available |
 
 ---
 
-**Total: 67 tools**
+**Total: 75 tools**

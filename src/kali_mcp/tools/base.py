@@ -190,6 +190,9 @@ def run_tool(command: list[str], timeout: int = DEFAULT_TIMEOUT, input_data: str
             input=input_data if input_data else None,
         )
         output = result.stdout.strip() or result.stderr.strip()
+        if result.returncode != 0:
+            output = "\n".join(s.strip() for s in (result.stdout, result.stderr) if s.strip())
+            return f"[error] command exited with code {result.returncode}\n{output}".strip()
         if not output:
             return "[info] command produced no output"
         return output
@@ -230,6 +233,9 @@ def run_bash(command: str, timeout: int = DEFAULT_TIMEOUT) -> str:
             timeout=timeout,
         )
         output = result.stdout.strip() or result.stderr.strip()
+        if result.returncode != 0:
+            output = "\n".join(s.strip() for s in (result.stdout, result.stderr) if s.strip())
+            return f"[error] command exited with code {result.returncode}\n{output}".strip()
         if not output:
             return f"[info] command produced no output (exit code {result.returncode})"
         return output

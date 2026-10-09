@@ -1,4 +1,5 @@
 from mcp.types import Tool
+import os
 from ..tools.base import run_tool, require_target
 
 TOOLS = [
@@ -60,15 +61,13 @@ TOOLS = [
     Tool(
         name="mimikatz",
         description=(
-            "Windows post-exploitation tool for extracting plaintext passwords, NTLM hashes, Kerberos tickets, "
-            "and PINs from memory (LSASS). "
-            "Use on a compromised Windows system to dump credentials. "
-            "Output: extracted credentials in structured format — usernames, domains, passwords/hashes."
+            "List Kali's packaged Mimikatz Windows resources. These executables require Windows; "
+            "this Linux tool does not run credential extraction. Output: resource locations."
         ),
         inputSchema={
             "type": "object",
             "properties": {
-                "opts": {"type": "string", "description": "Mimikatz command (e.g. 'privilege::debug sekurlsa::logonpasswords' to dump logon passwords)"},
+                "opts": {"type": "string", "description": "Reserved; Windows execution is not supported in this Linux container"},
             },
             "required": [],
         },
@@ -94,7 +93,7 @@ TOOLS = [
     Tool(
         name="hash_identifier",
         description=(
-            "Hash type identification tool. Analyzes a hash string and determines which algorithm(s) likely produced it "
+            "Non-interactive hash type identification using hashID. Analyzes a hash string and determines which algorithm(s) likely produced it "
             "(MD5, SHA1, SHA256, NTLM, bcrypt, etc.). "
             "Use BEFORE attempting to crack a hash — you must know the hash type to select the correct mode in hashcat "
             "or format in john. "
@@ -235,6 +234,8 @@ def impacket(module: str, target: str, opts: str = "") -> str:
 
 
 def mimikatz(opts: str = "") -> str:
+    if opts:
+        return "[error] Mimikatz execution requires Windows; call without opts to list packaged resources"
     cmd = ["mimikatz"]
     if opts:
         cmd.extend(opts.split())
@@ -254,11 +255,12 @@ def bettercap(iface: str = "", caplet: str = "", opts: str = "") -> str:
 
 def hash_identifier(hash_str: str = "", hashfile: str = "") -> str:
     if not hash_str and not hashfile:
-        return "hash_str or hashfile is required"
-    cmd = ["hash-identifier"]
+        return "[error] hash_str or hashfile is required"
     if hashfile:
-        return run_tool(["hash-identifier", hashfile], timeout=30)
-    return run_tool(cmd, timeout=30, input_data=hash_str)
+        if not os.path.isfile(hashfile):
+            return "[error] hashfile must be an existing file"
+        return run_tool(["hashid", os.path.abspath(hashfile)], timeout=30)
+    return run_tool(["hashid"], timeout=30, input_data=hash_str + "\n")
 
 
 def cewl(url: str, depth: int = 2, min_length: int = 3, outfile: str = "", opts: str = "") -> str:

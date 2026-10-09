@@ -1,95 +1,74 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="kali-mcp:latest"
 
-build() {
-    echo "[*] Building $IMAGE ..."
-    docker build -t "$IMAGE" .
-}
-
-run() {
-    if ! docker image inspect "$IMAGE" &>/dev/null; then
-        echo "[!] Image $IMAGE not found — building first"
-        build
-    fi
-
-    local auth=""
-    if [[ -n "${KALI_MCP_AUTH_TOKEN:-}" ]]; then
-        auth="-e KALI_MCP_AUTH_TOKEN=$KALI_MCP_AUTH_TOKEN"
-    fi
-
-    echo "[*] Starting Kali MCP server (privileged mode) ..."
-    exec docker run --rm -i --privileged $auth "$IMAGE"
-}
-
-compose() {
-    local auth="${KALI_MCP_AUTH_TOKEN:-}"
-    KALI_MCP_AUTH_TOKEN="$auth" docker compose run --rm kali-mcp
-}
-
-test_image() {
-    if ! docker image inspect "$IMAGE" &>/dev/null; then
-        echo "[!] Image $IMAGE not found — building first"
-        build
-    fi
-
-    echo "[*] Smoke-testing $IMAGE over stdio (initialize + tools/list) ..."
-    local out count
-    out=$(printf '%s\n' \
-        '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
-        '{"jsonrpc":"2.0","id":2,"method":"notifications/initialized","params":{}}' \
-        '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}' \
-        | docker run --rm -i "$IMAGE" 2>/dev/null | tail -1)
-    count=$(printf '%s' "$out" | grep -o '"name"' | wc -l | tr -d ' ')
-
-    if [ "${count:-0}" -gt 0 ]; then
-        echo "[+] OK: server responded with $count tools"
-    else
-        echo "[x] FAIL: no tools returned"
-        printf '%s\n' "$out" | head -c 400
+require_docker() {
+    if ! docker info >/dev/null 2>&1; then
+        echo "[error] Docker is not running. Start Docker, then retry." >&2
         exit 1
     fi
 }
 
-usage() {
-    cat <<EOF
-Usage: $0 <command>
+build() {
+    require_docker
+    docker build --platform linux/amd64 -t "$IMAGE" "$ROOT"
+}
 
-Commands:
-  build         Build the Docker image
-  run           Run the MCP server (stdio) — connects to MCP client via stdin/stdout
-  test          Smoke-test the image over stdio (initialize + tools/list)
-  compose       Run via docker compose
-  help          Show this help
+ensure_image() {
+    require_docker
+    if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        build >&2
+    fi
+}
 
-Environment:
-  KALI_MCP_AUTH_TOKEN    Optional auth token (passed to the server)
+run() {
+    ensure_image
+    echo "[*] Starting $IMAGE (stdio) ..." >&2
+    exec docker run --rm -i --platform linux/amd64 \
+        --cap-add=NET_ADMIN --cap-add=NET_RAW \
+        --mount type=volume,src=kali-mcp-cache,dst=/root/.cache \
+        --mount type=volume,src=kali-nuclei-templates,dst=/root/nuclei-templates \
+        -e KALI_MCP_AUTH_TOKEN "$IMAGE"
+}
 
-Examples:
-  # Build and run
-  ./docker-run.sh build
-  ./docker-run.sh run
+verify_image() {
+    local image_id="$1"
+    mkdir -p "$ROOT/test-results"
+    docker run --rm --platform linux/amd64 \
+        --cap-add=NET_ADMIN --cap-add=NET_RAW \
+        --mount type=volume,src=kali-mcp-cache,dst=/root/.cache \
+        --mount type=volume,src=kali-nuclei-templates,dst=/root/nuclei-templates \
+        --mount "type=bind,src=$ROOT/test-results,dst=/results" \
+        --entrypoint python "$image_id" /app/test_container.py \
+        --report /results/verification.json
+}
 
-  # Run with auth
-  KALI_MCP_AUTH_TOKEN=secret123 ./docker-run.sh run
+test_image() {
+    ensure_image
+    local image_id
+    image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
+    verify_image "$image_id"
+}
 
-  # MCP client config (Claude Desktop, OpenCode):
-  # {
-  #   "mcpServers": {
-  #     "kali": {
-  #       "command": "docker",
-  #       "args": ["run", "--rm", "-i", "kali-mcp:latest"]
-  #     }
-  #   }
-  # }
-EOF
+release() {
+    ensure_image
+    local image_id
+    image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
+    verify_image "$image_id"
+    docker tag "$image_id" kali-worker:1.0
+    echo "[+] Verified $image_id and tagged kali-worker:1.0"
 }
 
 case "${1:-help}" in
-    build)   build ;;
-    run)     run ;;
-    test)    test_image ;;
-    compose) compose ;;
-    *)       usage ;;
+    build) build ;;
+    run) run ;;
+    test) test_image ;;
+    release) release ;;
+    compose) require_docker; docker compose -f "$ROOT/docker-compose.yml" run --rm kali-mcp ;;
+    help) printf '%s\n' 'Usage: ./docker-run.sh build|test|release|run|compose' \
+        'build: AMD64 Kali image; test: inventory + functional checks; release: test then tag kali-worker:1.0' \
+        'run: stdio MCP with optional KALI_MCP_AUTH_TOKEN. Reports: test-results/verification.json' ;;
+    *) echo "[error] unknown command: $1" >&2; exit 2 ;;
 esac

@@ -1,4 +1,5 @@
 from mcp.types import Tool
+import shlex
 from ..tools.base import run_tool, require_target
 
 TOOLS = [
@@ -203,7 +204,36 @@ TOOLS = [
     ),
 ]
 
+TOOLS.extend([
+    Tool(
+        name="httpx_probe",
+        description="Probe HTTP services with ProjectDiscovery's httpx-toolkit (not the Python httpx client). Returns JSON lines with status, title, and server information.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "URL or host to probe"},
+                "opts": {"type": "string", "description": "Additional httpx-toolkit options, including quoted headers"},
+            },
+            "required": ["target"],
+        },
+    ),
+    Tool(
+        name="testssl",
+        description="Check TLS protocols, ciphers, certificates, and vulnerabilities with testssl.sh. Returns a text report. Use only against authorized services.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "HTTPS URL or host:port"},
+                "opts": {"type": "string", "description": "Additional testssl options (e.g. --protocols)"},
+            },
+            "required": ["target"],
+        },
+    ),
+])
+
 DISPATCH = {
+    "httpx_probe": lambda **kw: httpx_probe(**kw),
+    "testssl": lambda **kw: testssl(**kw),
     "sqlmap": lambda **kw: sqlmap(**kw),
     "nikto": lambda **kw: nikto(**kw),
     "gobuster": lambda **kw: gobuster(**kw),
@@ -226,6 +256,23 @@ def sqlmap(url: str, opts: str = "--batch --random-agent") -> str:
     if opts:
         cmd.extend(opts.split())
     return run_tool(cmd, timeout=300)
+
+
+def httpx_probe(target: str, opts: str = "") -> str:
+    if require_target(target):
+        return "[error] target is required"
+    return run_tool([
+        "httpx-toolkit", "-u", target, "-json", "-silent", "-sc", "-title", "-server", "-duc",
+        *shlex.split(opts),
+    ], timeout=120)
+
+
+def testssl(target: str, opts: str = "") -> str:
+    if require_target(target):
+        return "[error] target is required"
+    return run_tool([
+        "testssl", "--warnings", "batch", "--color", "0", *shlex.split(opts), target,
+    ], timeout=600)
 
 
 def nikto(host: str, port: str = "80", opts: str = "") -> str:

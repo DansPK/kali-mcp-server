@@ -1,6 +1,6 @@
 # Kali MCP
 
-An [MCP](https://modelcontextprotocol.io) server that exposes **67 Kali Linux security tools** (network, web, password, recon, Metasploit, evasion, forensics, post-exploitation, wireless, and OWASP ZAP) to AI applications.
+An [MCP](https://modelcontextprotocol.io) server that exposes **75 security tools**, including Kali utilities, source-code scanners, API tests, and OWASP ZAP, to AI applications.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -10,7 +10,7 @@ An [MCP](https://modelcontextprotocol.io) server that exposes **67 Kali Linux se
 
 ## Features
 
-- **67 tools** across 11 categories, all callable by name through the MCP `tools/list` / `tools/call` protocol.
+- **75 tools** across 13 categories, all callable by name through the MCP `tools/list` / `tools/call` protocol.
 - **Three transports** — `stdio` (default), `sse`, and `streamable-http`.
 - **Optional token auth** via `_meta.auth_token` or HTTP headers, with TLS support.
 - **Safe execution layer** — every subprocess goes through one gateway with allow/deny lists, required-argument validation, and per-tool timeouts.
@@ -42,17 +42,35 @@ This installs the `kali-mcp` entrypoint and pins `mcp>=1.9,<2` (the server uses 
 ### Docker
 
 ```bash
-# Build the image
-docker build -t kali-mcp:latest .
-
-# Or via the helper script
+# On your Intel/AMD laptop, with Docker running:
+git clone https://github.com/DansPK/kali-mcp-server.git
+cd kali-mcp-server
 ./docker-run.sh build
-
-# Include OWASP ZAP + a Java 17/21 JVM (adds ~400 MB)
-docker build --build-arg INSTALL_ZAP=true -t kali-mcp:latest .
+./docker-run.sh test
+./docker-run.sh release
 ```
 
-> The image is large: it installs ~50 Kali packages (including Metasploit). Ensure you have several GB of free disk space and a fast mirror. A `.dockerignore` keeps the local `.venv/` and `.git/` out of the build context.
+The image targets **linux/amd64 only**. On Windows, run the helper from WSL2 with Docker integration enabled. ZAP and Java 21 are included in every build; no `INSTALL_ZAP` flag is needed. Building downloads the Kali packages, pinned Python scanners, and Newman. The image includes Metasploit and a CPU OpenCL runtime, so allow substantial disk space and build time.
+
+`build` creates `kali-mcp:latest`. `test` verifies that exact image and writes `test-results/verification.json`. `release` reruns verification and tags the tested image ID as **`kali-worker:1.0`** only if required checks pass. It does not push an image to a registry. To rebuild directly:
+
+```bash
+docker build --platform linux/amd64 -t kali-mcp:latest .
+```
+
+The Kali last-release base is pinned by digest and uses `kali-last-snapshot`. Python/npm tool versions are pinned; installed package versions are recorded in `/opt/kali-versions/` and included in the verification report. Kali's snapshot repository advances at the next release, so future builds can resolve different apt versions and must be tested again.
+
+The helper and Compose persist scanner caches in `kali-mcp-cache` and Nuclei templates in `kali-nuclei-templates`. Runtime internet access is allowed for vulnerability databases, rules, and templates. These volumes are disposable caches, not reports. Neither credentials nor caches are committed to Git.
+
+To scan your own project, mount it into the container and use that container path in MCP arguments:
+
+```bash
+docker run --rm -i --platform linux/amd64 \
+  -v "$PWD/project:/workspace:ro" kali-worker:1.0
+# MCP: semgrep {"path":"/workspace"}
+# MCP: gitleaks {"path":"/workspace"}
+# MCP: trivy {"path":"/workspace"}
+```
 
 ---
 
@@ -197,7 +215,7 @@ results.
 }
 ```
 
-Some tools (`nmap`, `masscan`, `tcpdump`) need elevated privileges. Use `--privileged`, or the narrower `--cap-add=NET_ADMIN --cap-add=NET_RAW`.
+Some tools (`nmap`, `masscan`, `tcpdump`) need network capabilities. The helper grants `NET_ADMIN` and `NET_RAW`; physical wireless devices and GPU access require host-specific configuration.
 
 With auth:
 
@@ -257,12 +275,14 @@ Unauthorized requests are rejected with MCP error code `-32001`. When no token i
 
 ## Tools
 
-67 tools across 11 categories — see [TOOLS.md](TOOLS.md) for details.
+75 tools across 13 categories — see [TOOLS.md](TOOLS.md) for details.
 
 | Category | Tools |
 |---|---|
-| Network | nmap, masscan, netcat, tcpdump, arp_scan, onesixtyone, dnsrecon, tshark |
-| Web | sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix |
+| Network | nmap, masscan, netcat, tcpdump, arp_scan, onesixtyone, dnsrecon, tshark, naabu |
+| Web | sqlmap, nikto, gobuster, dirb, wpscan, ffuf, nuclei, whatweb, wfuzz, xsser, commix, httpx_probe, testssl |
+| Source | semgrep, gitleaks, trivy |
+| API | schemathesis, newman |
 | OWASP ZAP | zap_start, zap_stop, zap_status, zap_spider, zap_active_scan, zap_scan, zap_alerts, zap_report |
 | Password | hydra, john, hashcat, crunch |
 | Recon | enum4linux, searchsploit, subfinder, amass, exiftool, theHarvester, smbclient |
@@ -311,6 +331,8 @@ src/kali_mcp/
     ├── base.py        # run_tool() subprocess gateway + start_background() for daemons
     ├── network.py     # Network scanning, packet capture, DNS/SNMP enumeration
     ├── web.py         # Web vulnerability scanning, fuzzing, injection tools
+    ├── source.py      # Semgrep, Gitleaks, Trivy
+    ├── api.py         # Schemathesis, Newman
     ├── password.py    # Brute-force, hash cracking, wordlist generation
     ├── recon.py       # OSINT, SMB/DNS enumeration, metadata extraction
     ├── metasploit.py  # Full Metasploit Framework integration
@@ -322,6 +344,14 @@ src/kali_mcp/
 ```
 
 Each tool module exports a `TOOLS` list and a `DISPATCH` dict; `tools/__init__.py` merges them into `ALL_TOOLS` / `TOOL_DISPATCH`.
+
+### Compatibility notes
+
+- `volatility` uses Volatility 3's `vol` CLI: pass `image` and a namespaced `plugin` such as `windows.pslist`. The old `profile` argument is removed; symbols may need downloads or local setup.
+- `hash_identifier` uses non-interactive `hashid` with the same `hash_str` / `hashfile` arguments. The older interactive `hash-identifier` program fails when stdin closes.
+- `mimikatz` lists installed Windows resources. Passing execution options returns an error; Windows execution is outside this Linux container.
+- Failed commands retain stdout/stderr and set MCP `isError`. Gitleaks findings remain successful scan results with redacted JSON. Schemathesis/Newman failing checks return an error plus their report.
+- New wrappers parse quoted `opts` into argument lists and use bounded timeouts. `httpx_probe` calls `httpx-toolkit`, avoiding the Python `httpx` executable name conflict.
 
 ---
 
@@ -338,6 +368,9 @@ Each tool module exports a `TOOLS` list and a `DISPATCH` dict; `tools/__init__.p
 ## Testing
 
 ```bash
+python -m unittest -v test_tools
+python test_container.py --protocol-only --report test-results/local-protocol.json
+
 # Smoke-test the locally installed server (calls a sample of tools + auth)
 python test_server.py
 
@@ -351,13 +384,23 @@ python test_large_result.py
 
 ### Container install test
 
-`docker-run.sh test` builds (if needed) and smoke-tests the image over stdio,
-asserting that `tools/list` returns tools:
+`docker-run.sh test` builds if needed, then runs the following required checks:
+
+- All 75 MCP names match the dispatch table and executable/resource inventory; startup checks are bounded and crashes/missing dependencies fail verification.
+- Stdio and HTTP discovery/calls, metadata/header authentication, JSON framing, >1 MiB output, and overflow-file preservation.
+- All eight new tools against local fixtures: code findings, redacted dummy secrets, a vulnerable lockfile, HTTP/TLS, API regression assertions and an intentional API server error, and port discovery.
+- Existing workflows: Nmap, WhatWeb, ffuf, CeWL, Crunch, hash identification, CPU John/Hashcat cracking, metadata/binary/packet analysis, file carving, steganography, Exploit DB lookup, Mimikatz resource listing, and ZAP startup/spider/shutdown.
+
+Scanner findings are expected on intentionally vulnerable fixtures. Tests check those findings and expected assertion failures; arbitrary output does not count as success. Only the fixture services on loopback are scanned. Trivy needs internet access to obtain its database.
+
+The report distinguishes functional coverage from **installation/startup-only** coverage. Windows/AD workflows, physical wireless devices, GPU acceleration, real memory images, and external OSINT datasets are not verified. A passing report is not a claim that these full workflows were tested. Inspect `checks`, `functional_tools`, `installation_startup_only`, and `limits`.
 
 ```bash
 ./docker-run.sh build
 ./docker-run.sh test
-# [+] OK: server responded with 67 tools
+cat test-results/verification.json
+./docker-run.sh release
+# Only after verification passes: kali-worker:1.0
 ```
 
 For a fast, dependency-light check of the packaging itself (without installing

@@ -15,7 +15,7 @@ Cross-platform client for the Kali MCP server. Works on **Windows**, **Linux**, 
 Requires Python 3.10+ and the `mcp` package:
 
 ```bash
-pip install mcp
+pip install 'mcp>=1.9,<2'
 ```
 
 ## Usage

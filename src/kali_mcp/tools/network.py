@@ -1,4 +1,5 @@
 from mcp.types import Tool
+import shlex
 from ..tools.base import run_tool, require_target
 
 TOOLS = [
@@ -147,7 +148,22 @@ TOOLS = [
     ),
 ]
 
+TOOLS.append(Tool(
+    name="naabu",
+    description="Discover open TCP ports with Naabu. Defaults to TCP connect scanning. Returns JSON lines; requires an authorized target.",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "target": {"type": "string", "description": "Host, IP, or CIDR"},
+            "ports": {"type": "string", "description": "Optional ports or range (e.g. 80,443 or 1-1024)"},
+            "opts": {"type": "string", "description": "Additional Naabu options"},
+        },
+        "required": ["target"],
+    },
+))
+
 DISPATCH = {
+    "naabu": lambda **kw: naabu(**kw),
     "nmap": lambda **kw: nmap(**kw),
     "masscan": lambda **kw: masscan(**kw),
     "netcat": lambda **kw: netcat(**kw),
@@ -170,6 +186,15 @@ def nmap(target: str, ports: str = "", opts: str = "-sV -sC") -> str:
         cmd.extend(["-p", ports])
     cmd.append(target)
     return run_tool(cmd, timeout=300)
+
+
+def naabu(target: str, ports: str = "", opts: str = "") -> str:
+    if require_target(target):
+        return "[error] target is required"
+    cmd = ["naabu", "-host", target, "-scan-type", "c", "-json", "-silent", "-duc", "-no-stdin"]
+    if ports:
+        cmd.extend(["-p", ports])
+    return run_tool([*cmd, *shlex.split(opts)], timeout=300)
 
 
 def masscan(target: str, ports: str = "1-65535", rate: int = 1000) -> str:

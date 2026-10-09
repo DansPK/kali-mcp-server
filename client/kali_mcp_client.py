@@ -57,7 +57,7 @@ def result_to_dict(res):
             {"type": getattr(c, "type", "text"), "text": getattr(c, "text", "")}
             for c in (getattr(res, "content", None) or [])
         ],
-        "isError": getattr(res, "is_error", False),
+        "isError": getattr(res, "isError", False),
     }
 
 
@@ -158,17 +158,17 @@ class Client:
             params["_meta"] = meta
             # Build the typed request and use send_request so _meta reaches
             # the server middleware (public helpers drop unknown _meta keys).
-            from mcp.types import ListToolsRequest, CallToolRequest
+            from mcp.types import ListToolsRequest, CallToolRequest, ListToolsResult, CallToolResult
             if method == "tools/list":
                 request = ListToolsRequest.model_validate(
                     {"method": "tools/list", "params": params}
                 )
-                return await self.session.send_request(request, type(request))
+                return await self.session.send_request(request, ListToolsResult)
             if method == "tools/call":
                 request = CallToolRequest.model_validate(
                     {"method": "tools/call", "params": params}
                 )
-                return await self.session.send_request(request, type(request))
+                return await self.session.send_request(request, CallToolResult)
             raise ValueError(f"unsupported method: {method}")
         # No auth — use the public API.
         if method == "tools/list":
